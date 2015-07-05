@@ -83,7 +83,9 @@ Module Lang.
   | LOG : nat -> OpCode
   | CREATE
   | CALL
-(* and more *)
+  | CALLCODE
+  | RETURN
+  | SUICIDE
     .
 
   (* what is an RLP? *)
