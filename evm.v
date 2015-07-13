@@ -20,7 +20,9 @@ Module State (I : Impl).
   Definition world_state := FMap address account_state.
 End State.
 
-Module Lang.
+Module Lang (I : Impl).
+  Import I.
+
   Inductive OpCode : Set :=
   | STOP
   | ADD
@@ -86,7 +88,8 @@ Module Lang.
   | CALLCODE
   | RETURN
   | SUICIDE
-    .
+  | Number : bit256 -> OpCode
+.
 
   (* what is an RLP? *)
   (* what is the intrinsic gas of a transaction? *)
@@ -95,22 +98,27 @@ Module Lang.
     (* now, maybe, read the cpp implementation *)
 End Lang.
 
-
   (* define substate *)
-
 
 Module EVM (I : Impl).
 
   Import I.
 
+  (* 9.4.1 *)
   Record state := {
-    stack : list bit256
+    state_g  : bit256 ;
+    state_pc : bit256 ;
+    state_m  : FMap bit256 bit256;
+    state_i  : bit256 ;
+    state_stack : list bit256
+    (* something more *)
     }.
 
   Definition invariant (s : state) : bool :=
-    length s.(stack) <=? 256.
+    length s.(state_stack) <=? 256.
 
   (* what is the type of one-step *)
+  Definition step : (s : state) : state.
 
   (* what is the type of the whole execution? *)
 
