@@ -10,7 +10,7 @@ Module Lang.
   | SUB
   | DIV
   | EXP
-  | GT
+  | instr_GT
   | instr_EQ
   | AND
   | ISZERO
@@ -170,7 +170,7 @@ Module Lang.
       JUMPI ::
       TIMESTAMP ::
       DUP3 ::
-      GT ::
+      instr_GT ::
       DUP1 ::
       ISZERO ::
       PUSH_N "0x0119" ::
@@ -241,7 +241,7 @@ Module Lang.
       POP ::
       SLOAD ::
       TIMESTAMP ::
-      GT ::
+      instr_GT ::
       ISZERO ::
       PUSH_N "0x01de" ::
       JUMPI ::
@@ -447,6 +447,12 @@ Module EVM (U256:OrderedType).
                 | _ => zero
               end).
 
+  Definition gt : operation := two_one_op
+    (fun a b => match U256.compare a b with
+                | GT _ => one
+                | _ => zero
+              end).
+
   Definition sub_op : operation := two_one_op sub.
 
   Definition swap1 : operation := two_two_op (fun a b => (b, a)).
@@ -465,6 +471,9 @@ Module EVM (U256:OrderedType).
       ; str     : memory
       ; program : list instr
       ; prg_sfx : list instr
+      ; caller  : U256.t
+      ; value   : U256.t
+      ; data    : list U256.t
     }.
 
   Inductive result :=
@@ -474,6 +483,7 @@ Module EVM (U256:OrderedType).
   | stopped  : result
   | end_of_program :result (* what actually happens? *)
   | failure : result (* what actually happens? *)
+  | not_implemented :result
   .
 
   Definition operation_sem (op : operation) (pre: state) : result :=
@@ -487,9 +497,31 @@ Module EVM (U256:OrderedType).
               mem := m ;
               str := pre.(str) ;
               program := pre.(program);
-              prg_sfx := tl |}
+              prg_sfx := tl;
+              caller := pre.(caller);
+              value := pre.(value);
+              data  := pre.(data)
+            |}
         end
     end.
+
+  Definition reader (f : state -> U256.t) (pre : state) : result :=
+    match pre.(prg_sfx) with
+      | nil => end_of_program
+      | _ :: tl =>
+        continue {| stc := f pre :: pre.(stc) ;
+          mem := pre.(mem) ;
+          str := pre.(str) ;
+          program := pre.(program);
+          prg_sfx := tl;
+          caller := pre.(caller);
+          value  := pre.(value);
+          data   := pre.(data)
+        |}
+    end.
+
+  Parameter U : string -> U256.t.
+  Parameter Ulen : forall {a : Type}, list a -> U256.t.
 
   Definition instr_sem (i : instr) : state -> result :=
     match i with
@@ -498,14 +530,14 @@ Module EVM (U256:OrderedType).
       | SUB => operation_sem sub_op
       | DIV => operation_sem div_op
       | EXP => operation_sem exp_op
-      | GT  => operation_sem gt_op
+      | instr_GT  => operation_sem gt
       | instr_EQ => operation_sem eq
       | AND => operation_sem and_op
-      | ISZERO => operation_sem izero
-      | CALLER => 
-      | CALLVALUE
-      | CALLDATALOAD
-      | CALLDATASIZE
+      | ISZERO => operation_sem iszero
+      | CALLER => reader caller
+      | CALLVALUE => reader value
+      | CALLDATALOAD => (fun _ => not_implemented)
+      | CALLDATASIZE => reader (fun st => Ulen (st.(data)))
       | CALLDATACOPY
       | TIMESTAMP
       | POP
@@ -515,15 +547,15 @@ Module EVM (U256:OrderedType).
       | SSTORE
       | JUMP
       | JUMPI
-      | JUMPDEST
-      | PUSH_N str
+      | JUMPDEST => (fun _ => not_implemented)
+      | PUSH_N str => operation_sem (push_x (U str))
       | DUP1
       | DUP2
       | DUP3
       | SWAP1
       | SWAP2
       | RETURN
-      | SUICIDE
+      | SUICIDE => (fun _ => suicide)
     end.
 
 End EVM.
