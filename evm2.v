@@ -280,8 +280,6 @@ End Lang.
 
 Module EVM (U256:OrderedType).
 
-  Print is_zero.
-
   Parameter is_zero : U256.t -> bool.
   Parameter zero : U256.t.
   Parameter one  : U256.t.
@@ -293,8 +291,6 @@ Module EVM (U256:OrderedType).
 
   Definition stack := list U256.t.
 
-  Definition state := stack.
-
   Require Import FMapList.
 
   Module Memory := Make (U256).
@@ -303,7 +299,7 @@ Module EVM (U256:OrderedType).
 
   Definition m T := option (T * memory).
 
-  Definition operation := state -> memory -> m state (* maybe with side-effect? *).
+  Definition operation := stack -> memory -> m stack (* maybe with side-effect? *).
 
   (* trying to encode
      first,  https://etherchain.org/account/0x3c7771db7f343b79003e8c9ba787bbe47764ed05#codeDisasm
@@ -391,9 +387,17 @@ Module EVM (U256:OrderedType).
 
   Parameter exp : U256.t -> U256.t -> U256.t.
 
-  Definition exp_op : operation := two_two_op exp.
+  Definition two_one_op (f : U256.t -> U256.t -> U256.t) : operation :=
+    fun s mem =>
+      match s with
+        | nil => None
+        | _ :: nil => None
+        | a :: b :: l => Some ((f a b) :: l, mem)
+      end.
 
-  Definition and_op : operation := two_two_op and.
+  Definition exp_op : operation := two_one_op exp.
+
+  Definition and_op : operation := two_one_op and.
 
   Definition one_one_op (f : U256.t -> U256.t) : operation :=
     fun s mem =>
@@ -409,14 +413,6 @@ Module EVM (U256:OrderedType).
     one_one_op input.
 
   Parameter div : U256.t -> U256.t -> U256.t.
-
-  Definition two_one_op (f : U256.t -> U256.t -> U256.t) : operation :=
-    fun s mem =>
-      match s with
-        | nil => None
-        | _ :: nil => None
-        | a :: b :: l => Some ((f a b) :: l, mem)
-      end.
 
   Definition div_op := two_one_op div.
   Definition add_op := two_one_op add.
@@ -438,9 +434,9 @@ Module EVM (U256:OrderedType).
         | _ => None
       end.
 
-  Definition dup3 : operation :
+  Definition dup3 : operation :=
     fun s mem =>
-      match s iwth
+      match s with
         | a :: b :: c :: l => Some (c :: a :: b :: c :: l, mem)
         | _ => None
       end.
@@ -462,5 +458,7 @@ Module EVM (U256:OrderedType).
           Some (c :: b :: a :: l, mem)
         | _ => None
       end.
+
+  Parameter state : Set.
 
 End EVM.
