@@ -7,13 +7,11 @@ Module Lang.
   Inductive instr := (** partial.  adding as necessary. *)
   | STOP
   | ADD
-  | MUL
   | SUB
   | DIV
-  | MOD
   | EXP
   | GT
-  | EQ
+  | instr_EQ
   | AND
   | ISZERO
   | CALLER
@@ -53,17 +51,17 @@ Module Lang.
       PUSH_N "0x4665096d" :: nil).
 
   Definition example1_part2 : list instr :=
-      EQ ::
+      instr_EQ ::
       PUSH_N "0x004f" ::
       JUMP ::
       DUP1 ::
       PUSH_N "0xbe040fb0" ::
-      EQ ::
+      instr_EQ ::
       PUSH_N "0x0070" ::
       JUMPI ::
       DUP1 ::
       PUSH_N "0xdd467064" ::
-      EQ ::
+      instr_EQ ::
       PUSH_N "0x007d" ::
       JUMPI ::
       PUSH_N "0x004d" ::
@@ -166,7 +164,7 @@ Module Lang.
       CALLER ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
-      EQ ::
+      instr_EQ ::
       ISZERO ::
       PUSH_N "0x013a" ::
       JUMPI ::
@@ -183,7 +181,7 @@ Module Lang.
       PUSH_N "0x00" ::
       POP ::
       SLOAD ::
-      EQ ::
+      instr_EQ ::
       JUMPDEST ::
       ISZERO ::
       PUSH_N "0x0131" ::
@@ -234,7 +232,7 @@ Module Lang.
       CALLER ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
-      EQ ::
+      instr_EQ ::
       ISZERO ::
       PUSH_N "0x01df" ::
       JUMPI ::
@@ -260,7 +258,7 @@ Module Lang.
       AND ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
-      SUICIDE ::
+      SUICIDE :: (* here, payout occurs *)
       JUMPDEST ::
       JUMPDEST ::
       JUMPDEST ::
@@ -279,6 +277,8 @@ Module Lang.
 End Lang.
 
 Module EVM (U256:OrderedType).
+
+  Import Lang.
 
   Parameter is_zero : U256.t -> bool.
   Parameter zero : U256.t.
@@ -459,6 +459,71 @@ Module EVM (U256:OrderedType).
         | _ => None
       end.
 
-  Parameter state : Set.
+  Record state :=
+    {   stc     : stack
+      ; mem     : memory
+      ; str     : memory
+      ; program : list instr
+      ; prg_sfx : list instr
+    }.
+
+  Inductive result :=
+  | continue : state -> result
+  | suicide  : result
+  | returned : result
+  | stopped  : result
+  | end_of_program :result (* what actually happens? *)
+  | failure : result (* what actually happens? *)
+  .
+
+  Definition operation_sem (op : operation) (pre: state) : result :=
+    match pre.(prg_sfx) with
+      | nil => end_of_program
+      | _ :: tl =>
+        match op pre.(stc) pre.(mem) with
+          | None => failure
+          | Some (s,m) =>
+            continue {| stc := s ;
+              mem := m ;
+              str := pre.(str) ;
+              program := pre.(program);
+              prg_sfx := tl |}
+        end
+    end.
+
+  Definition instr_sem (i : instr) : state -> result :=
+    match i with
+      | STOP => (fun _ => stopped)
+      | ADD => operation_sem add_op
+      | SUB => operation_sem sub_op
+      | DIV => operation_sem div_op
+      | EXP => operation_sem exp_op
+      | GT  => operation_sem gt_op
+      | instr_EQ => operation_sem eq
+      | AND => operation_sem and_op
+      | ISZERO => operation_sem izero
+      | CALLER => 
+      | CALLVALUE
+      | CALLDATALOAD
+      | CALLDATASIZE
+      | CALLDATACOPY
+      | TIMESTAMP
+      | POP
+      | MLOAD
+      | MSTORE
+      | SLOAD
+      | SSTORE
+      | JUMP
+      | JUMPI
+      | JUMPDEST
+      | PUSH_N str
+      | DUP1
+      | DUP2
+      | DUP3
+      | SWAP1
+      | SWAP2
+      | RETURN
+      | SUICIDE
+    end.
 
 End EVM.
