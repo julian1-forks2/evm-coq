@@ -1,6 +1,6 @@
-Require Import FMapInterface.
 Require Import String.
 Require Import List.
+Require Import FMapInterface.
 
 Module Lang.
 
@@ -38,41 +38,55 @@ Module Lang.
   | SUICIDE
   .
 
-  Definition example1_part1 : list instr :=
-    ( PUSH_N "0x60" ::
-      PUSH_N "0x40" ::
-      MSTORE ::
-      PUSH_N "0x00" ::
-      CALLDATALOAD ::
-      PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" ::
-      SWAP1 ::
-      DIV ::
-      DUP1 ::
-      PUSH_N "0x4665096d" :: nil).
+  Search (string -> nat).
 
-  Definition example1_part2 : list instr :=
-      instr_EQ ::
-      PUSH_N "0x004f" ::
-      JUMP ::
-      DUP1 ::
-      PUSH_N "0xbe040fb0" ::
-      instr_EQ ::
-      PUSH_N "0x0070" ::
-      JUMPI ::
-      DUP1 ::
-      PUSH_N "0xdd467064" ::
-      instr_EQ ::
-      PUSH_N "0x007d" ::
-      JUMPI ::
-      PUSH_N "0x004d" ::
-      JUMP ::
-      JUMPDEST ::
-      STOP ::
-      JUMPDEST ::
+  Definition instr_length (i : instr) : nat :=
+    match i with
+    | PUSH_N str => NPeano.div (String.length str) 2
+    | _ => 1
+    end.
+
+  Fixpoint drop_bytes (prog : list instr) (bytes : nat) {struct bytes} :=
+    match prog, bytes with
+    | _, O => prog
+    | PUSH_N str :: tl, S pre =>
+       drop_bytes tl (pre - (NPeano.div (String.length str) 2 - 1))
+    | _ :: tl, S pre =>
+      drop_bytes tl pre
+    | nil, S _ => nil
+    end.
+
+  Definition example1 : list instr :=
+      PUSH_N "0x60" :: (* 2 *)
+      PUSH_N "0x40" :: (* 4 *)
+      MSTORE ::        (* 5 *)
+      PUSH_N "0x00" :: (* 7 *)
+      CALLDATALOAD ::  (* 8 *)
+      PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" :: (* 38 *)
+      SWAP1 :: (* 39 *)
+      DIV ::   (* 40 *)
+      DUP1 ::  (* 41 *)
+      PUSH_N "0x4665096d" :: (* 46 *)
+      instr_EQ :: (* 47 *)
+      PUSH_N "0x004f" :: (* 50 *)
+      JUMP :: (* 51 *)
+      DUP1 :: (* 52 *)
+      PUSH_N "0xbe040fb0" :: (* 57 *)
+      instr_EQ :: (* 58 *)
+      PUSH_N "0x0070" :: (* 60 *)
+      JUMPI :: (* 61 *)
+      DUP1 ::  (* 62 *)
+      PUSH_N "0xdd467064" :: (* 67 *)
+      instr_EQ :: (* 68 *)
+      PUSH_N "0x007d" :: (* 71 *)
+      JUMPI :: (* 72 *)
+      PUSH_N "0x004d" :: (*75 *)
+      JUMP :: (* 76 *)
+      JUMPDEST :: (* 77 *)
+      STOP :: (* 78 *)
+      JUMPDEST :: (* 79 *)
       PUSH_N "0x005a" ::
-      PUSH_N "0x04" :: nil.
-
-  Definition example1_part3 :=
+      PUSH_N "0x04" ::
       POP ::
       PUSH_N "0x00a4" ::
       JUMP ::
@@ -120,9 +134,7 @@ Module Lang.
       DUP1 ::
       DUP3 ::
       DUP2 ::
-      MSTORE :: nil.
-
-  Definition example1_part4 :=
+      MSTORE :: 
       PUSH_N "0x20" ::
       ADD ::
       SWAP2 ::
@@ -152,15 +164,11 @@ Module Lang.
       PUSH_N "0x0100" ::
       EXP ::
       SWAP1 ::
-      DIV :: nil.
-
-  Definition example1_part5 :=
+      DIV :: 
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND :: nil.
-
-  Definition example1_part6 :=
+      AND :: 
       CALLER ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
@@ -189,9 +197,7 @@ Module Lang.
       DUP2 ::
       PUSH_N "0x01" ::
       PUSH_N "0x00" ::
-      POP :: nil.
-
-  Definition example1_part7 :=
+      POP ::
       DUP2 ::
       SWAP1 ::
       SSTORE ::
@@ -222,9 +228,7 @@ Module Lang.
       PUSH_N "0x0100" ::
       EXP ::
       SWAP1 ::
-      DIV :: nil.
-
-  Definition example1_part8 :=
+      DIV :: 
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
@@ -263,16 +267,6 @@ Module Lang.
       JUMPDEST ::
       JUMPDEST ::
       JUMP :: nil.
-
-  Definition example1 :=
-    example1_part1
-    ++ example1_part2
-    ++ example1_part3
-    ++ example1_part4
-    ++ example1_part5
-    ++ example1_part6
-    ++ example1_part7
-    ++ example1_part8.
 
 End Lang.
 
@@ -409,8 +403,8 @@ Module EVM (U256:OrderedType).
   Definition sload storage : operation :=
     one_one_op (fun addr => match Memory.find addr storage with Some b => b | None => zero end).
 
-  Definition calldataload (input : U256.t -> U256.t) : operation :=
-    one_one_op input.
+  Definition calldataload (input : list U256.t) : operation :=
+    one_one_op (fun n => List.nth (to_nat n) input zero).
 
   Parameter div : U256.t -> U256.t -> U256.t.
 
@@ -469,8 +463,8 @@ Module EVM (U256:OrderedType).
     {   stc     : stack
       ; mem     : memory
       ; str     : memory
-      ; program : list instr
       ; prg_sfx : list instr
+      ; program : list instr
       ; caller  : U256.t
       ; value   : U256.t
       ; data    : list U256.t
@@ -536,26 +530,142 @@ Module EVM (U256:OrderedType).
       | ISZERO => operation_sem iszero
       | CALLER => reader caller
       | CALLVALUE => reader value
-      | CALLDATALOAD => (fun _ => not_implemented)
+      | CALLDATALOAD => (fun pre => operation_sem (calldataload pre.(data)) pre)
       | CALLDATASIZE => reader (fun st => Ulen (st.(data)))
-      | CALLDATACOPY
-      | TIMESTAMP
-      | POP
-      | MLOAD
-      | MSTORE
-      | SLOAD
-      | SSTORE
-      | JUMP
-      | JUMPI
-      | JUMPDEST => (fun _ => not_implemented)
+      | CALLDATACOPY => (fun pre => operation_sem (calldatacopy pre.(data)) pre)
+      | TIMESTAMP => (fun _ => not_implemented)
+      | POP =>    operation_sem pop
+      | MLOAD  => operation_sem mload
+      | MSTORE => operation_sem mstore
+      | SLOAD => (fun pre => operation_sem (sload pre.(str)) pre)
+      | SSTORE => (fun _ => not_implemented)
+      | JUMP => (fun pre =>
+                   match pre.(stc) with
+                   | nil => failure
+                   | hd :: tl =>
+                     continue {|
+                       stc := tl;
+                       mem := pre.(mem);
+                       str := pre.(str);
+                       program := pre.(program);
+                       prg_sfx := drop_bytes pre.(program) (to_nat hd);
+                       caller := pre.(caller);
+                       value := pre.(value);
+                       data := pre.(data)
+                     |}
+                   end
+                )
+      | JUMPI => (fun _ => not_implemented)
+      | JUMPDEST =>
+        (fun pre => match pre.(prg_sfx) with
+                      | nil => failure
+                      | _ :: tl =>
+                        continue {|
+                            stc := pre.(stc);
+                            mem := pre.(mem);
+                            str := pre.(str);
+                            program := pre.(program);
+                            prg_sfx := tl;
+                            caller := pre.(caller);
+                            value := pre.(value);
+                            data := pre.(data)
+                            |}
+                    end)
       | PUSH_N str => operation_sem (push_x (U str))
-      | DUP1
-      | DUP2
-      | DUP3
-      | SWAP1
-      | SWAP2
-      | RETURN
+      | DUP1 => operation_sem dup1
+      | DUP2 => operation_sem dup2
+      | DUP3 => operation_sem dup3
+      | SWAP1 => operation_sem swap1
+      | SWAP2 => (fun _ => not_implemented)
+      | RETURN => (fun _ => not_implemented)
       | SUICIDE => (fun _ => suicide)
     end.
+
+  Fixpoint apply_n (n : nat) (pre : state) : result :=
+    match n, pre.(prg_sfx) with
+      | O, _ => continue pre
+      | S n', hd::_ =>
+        match instr_sem hd pre with
+          | continue post =>  apply_n n' post
+          | x => x
+        end
+      | S n', nil => end_of_program
+    end.
+
+  Lemma apply_S : forall n' pre,
+    apply_n (S n') pre =
+    match pre.(prg_sfx) with
+      | hd :: _ => 
+        match instr_sem hd pre with
+          | continue post =>  apply_n n' post
+          | x => x
+        end
+      | nil => end_of_program
+    end.
+  Proof.
+  auto.
+  Qed.
+
+
+  Parameter c : U256.t.
+  Parameter v : U256.t.
+  Parameter d : list U256.t.
+
+  Definition ex := {|
+    stc := nil;
+    mem := Memory.empty U256.t;
+    str := Memory.empty U256.t;
+    program := example1;
+    prg_sfx := example1;
+    caller := c;
+    value := v;
+    data := d
+  |}.
+
+  Parameter tn : (to_nat (U "0x004f")) = 79.
+  Parameter hg : (to_nat (U "0x00a4")) = 164.
+  Parameter gg : (to_nat (U "0x005a")) = 90.
+
+  Goal apply_n 27 ex <> suicide.
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite tn.
+    compute -[apply_n].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite apply_S; compute -[apply_n NPeano.div].
+
+    rewrite apply_S; compute -[apply_n NPeano.div].
+
+    rewrite apply_S; compute -[apply_n NPeano.div].
+
+    rewrite apply_S; compute -[apply_n NPeano.div].
+    rewrite hg.
+
+    compute -[apply_n].
+
+    rewrite apply_S; compute -[apply_n].
+    rewrite apply_S; compute -[apply_n].
+    rewrite apply_S; compute -[apply_n].
+    rewrite apply_S; compute -[apply_n].
+    rewrite apply_S; compute -[apply_n].
+    rewrite apply_S; compute -[apply_n].
+    rewrite apply_S; compute -[apply_n].
+
+    rewrite gg.
+    congruence.
+  Qed.
 
 End EVM.
