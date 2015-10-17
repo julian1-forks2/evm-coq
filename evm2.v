@@ -40,9 +40,15 @@ Module Lang.
   | SUICIDE
   .
 
+  Fixpoint string_half_len str :=
+    match str with
+    | String _ (String _ tl) => S (string_half_len tl)
+    | _ => O
+    end.
+
   Definition instr_length (i : instr) : nat :=
     match i with
-    | PUSH_N str => NPeano.div (String.length str) 2
+    | PUSH_N str => string_half_len str
     | _ => 1
     end.
 
@@ -476,7 +482,6 @@ Module EVM (U256:OrderedType).
   | stopped  : result
   | end_of_program :result (* what actually happens? *)
   | failure : result (* what actually happens? *)
-  | not_implemented :result
   .
 
   Definition operation_sem (op : operation) (pre: state) : result :=
@@ -633,7 +638,7 @@ Module EVM (U256:OrderedType).
       | DUP3 => operation_sem dup3
       | SWAP1 => operation_sem swap1
       | SWAP2 => operation_sem swap2
-      | RETURN => (fun _ => not_implemented)
+      | RETURN => (fun _ => returned)
       | SUICIDE => (fun _ => suicide)
     end.
 
@@ -667,13 +672,14 @@ Module EVM (U256:OrderedType).
   Parameter v : U256.t.
   Parameter d : list U256.t.
   Parameter current_time : U256.t.
+  Parameter s : Memory.t U256.t.
 
   (* This results in a normal return. *)
   (* Maybe the execution can start in the middle.  How? *)
   Definition ex := {|
     stc := nil;
     mem := Memory.empty U256.t;
-    str := Memory.empty U256.t;
+    str := s;
     program := example1;
     prg_sfx := example1;
     caller := c;
@@ -803,8 +809,15 @@ Module EVM (U256:OrderedType).
           set b8 := is_zero _.
           case_eq b8 => b8_eq.
           {
+            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
+            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
+            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
+            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
+            
+
+
             run.
-            (* wow SUICIDE *)
+            (* stop here and see the condition for SUICIDE *)
             admit.
           }
           {
