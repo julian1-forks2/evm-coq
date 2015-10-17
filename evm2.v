@@ -477,7 +477,7 @@ Module EVM (U256:OrderedType).
 
   Inductive result :=
   | continue : state -> result
-  | suicide  : result
+  | suicide  : U256.t (* who gets the balance *) -> result
   | returned : result
   | stopped  : result
   | end_of_program :result (* what actually happens? *)
@@ -639,7 +639,12 @@ Module EVM (U256:OrderedType).
       | SWAP1 => operation_sem swap1
       | SWAP2 => operation_sem swap2
       | RETURN => (fun _ => returned)
-      | SUICIDE => (fun _ => suicide)
+      | SUICIDE => (fun pre =>
+                      match pre.(stc) with
+                        | nil => failure
+                        | hd :: _ => suicide hd
+                      end
+                   )
     end.
 
   Fixpoint apply_n (n : nat) (pre : state) : result :=
@@ -701,7 +706,9 @@ Module EVM (U256:OrderedType).
   Ltac run :=
     repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes]).
 
-  Goal apply_n 1000 ex <> suicide.
+  Parameter somebody : U256.t.
+
+  Goal apply_n 1000 ex <> suicide somebody.
     run.
     set b0 := is_zero _.
     case_eq b0 => b0_eq.
@@ -809,15 +816,10 @@ Module EVM (U256:OrderedType).
           set b8 := is_zero _.
           case_eq b8 => b8_eq.
           {
-            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
-            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
-            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
-            rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes].
-            
-
-
             run.
             (* stop here and see the condition for SUICIDE *)
+
+            (* next question.  how to change the storage? *)
             admit.
           }
           {
