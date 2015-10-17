@@ -2,6 +2,8 @@ Require Import String.
 Require Import List.
 Require Import FMapInterface.
 
+Require Import ssreflect ssrbool.
+
 Module Lang.
 
   Inductive instr := (** partial.  adding as necessary. *)
@@ -38,8 +40,6 @@ Module Lang.
   | SUICIDE
   .
 
-  Search (string -> nat).
-
   Definition instr_length (i : instr) : nat :=
     match i with
     | PUSH_N str => NPeano.div (String.length str) 2
@@ -69,7 +69,7 @@ Module Lang.
       PUSH_N "0x4665096d" :: (* 46 *)
       instr_EQ :: (* 47 *)
       PUSH_N "0x004f" :: (* 50 *)
-      JUMP :: (* 51 *)
+      JUMPI :: (* 51 *)
       DUP1 :: (* 52 *)
       PUSH_N "0xbe040fb0" :: (* 57 *)
       instr_EQ :: (* 58 *)
@@ -296,9 +296,7 @@ Module EVM (U256:OrderedType).
   Definition operation := stack -> memory -> m stack (* maybe with side-effect? *).
 
   (* trying to encode
-     first,  https://etherchain.org/account/0x3c7771db7f343b79003e8c9ba787bbe47764ed05#codeDisasm
-     second, https://etherchain.org/account/0x10ebb6b1607de9c08c61c6f6044b8edc93b8e9c9#codeDisasm
-     second, https://etherchain.org/account/0x2935aa0a2d2fbb791622c29eb1c117b65b7a9085#codeDisasm
+     https://etherchain.org/account/0x10ebb6b1607de9c08c61c6f6044b8edc93b8e9c9#codeDisasm
   *)
 
   Require Import List.
@@ -435,7 +433,7 @@ Module EVM (U256:OrderedType).
         | _ => None
       end.
 
-  Definition eq : operation := two_one_op
+  Definition eq_op : operation := two_one_op
     (fun a b => match U256.compare a b with
                 | EQ _ => one
                 | _ => zero
@@ -468,6 +466,7 @@ Module EVM (U256:OrderedType).
       ; caller  : U256.t
       ; value   : U256.t
       ; data    : list U256.t
+      ; time    : U256.t
     }.
 
   Inductive result :=
@@ -494,7 +493,8 @@ Module EVM (U256:OrderedType).
               prg_sfx := tl;
               caller := pre.(caller);
               value := pre.(value);
-              data  := pre.(data)
+              data  := pre.(data);
+              time  := pre.(time)
             |}
         end
     end.
@@ -510,7 +510,8 @@ Module EVM (U256:OrderedType).
           prg_sfx := tl;
           caller := pre.(caller);
           value  := pre.(value);
-          data   := pre.(data)
+          data   := pre.(data);
+          time   := pre.(time)
         |}
     end.
 
@@ -525,7 +526,7 @@ Module EVM (U256:OrderedType).
       | DIV => operation_sem div_op
       | EXP => operation_sem exp_op
       | instr_GT  => operation_sem gt
-      | instr_EQ => operation_sem eq
+      | instr_EQ => operation_sem eq_op
       | AND => operation_sem and_op
       | ISZERO => operation_sem iszero
       | CALLER => reader caller
@@ -533,12 +534,32 @@ Module EVM (U256:OrderedType).
       | CALLDATALOAD => (fun pre => operation_sem (calldataload pre.(data)) pre)
       | CALLDATASIZE => reader (fun st => Ulen (st.(data)))
       | CALLDATACOPY => (fun pre => operation_sem (calldatacopy pre.(data)) pre)
-      | TIMESTAMP => (fun _ => not_implemented)
+      | TIMESTAMP => reader time
       | POP =>    operation_sem pop
       | MLOAD  => operation_sem mload
       | MSTORE => operation_sem mstore
       | SLOAD => (fun pre => operation_sem (sload pre.(str)) pre)
-      | SSTORE => (fun _ => not_implemented)
+      | SSTORE => (fun pre =>
+                     match pre.(stc) with
+                     | nil => failure
+                     | _ :: nil => failure
+                     | addr :: val :: stl =>
+                       match pre.(prg_sfx) with
+                       | nil => failure
+                       | _ :: cont => 
+                         continue {|
+                             stc := stl;
+                             mem := pre.(mem);
+                             str := Memory.add addr val pre.(str);
+                             program := pre.(program);
+                             prg_sfx := cont;
+                             caller := pre.(caller);
+                             value := pre.(value);
+                             data := pre.(data);
+                             time := pre.(time)
+                           |}
+                       end
+                     end)
       | JUMP => (fun pre =>
                    match pre.(stc) with
                    | nil => failure
@@ -551,11 +572,45 @@ Module EVM (U256:OrderedType).
                        prg_sfx := drop_bytes pre.(program) (to_nat hd);
                        caller := pre.(caller);
                        value := pre.(value);
-                       data := pre.(data)
+                       data := pre.(data);
+                       time := pre.(time)
                      |}
                    end
                 )
-      | JUMPI => (fun _ => not_implemented)
+      | JUMPI => (fun pre =>
+                    match pre.(stc) with
+                    | nil => failure
+                    | hd::nil => failure
+                    | dst :: cond :: tl_stc =>
+                      if is_zero cond then
+                        match pre.(prg_sfx) with
+                        | nil => failure
+                        | _ :: tl =>
+                          continue {|
+                              stc := tl_stc;
+                              mem := pre.(mem);
+                              str := pre.(str);
+                              program := pre.(program);
+                              prg_sfx := tl;
+                              caller := pre.(caller);
+                              value := pre.(value);
+                              data := pre.(data);
+                              time := pre.(time)
+                            |}
+                        end
+                      else
+                        continue {|
+                            stc := tl_stc;
+                            mem := pre.(mem);
+                            str := pre.(str);
+                            program := pre.(program);
+                            prg_sfx := drop_bytes pre.(program) (to_nat dst);
+                            caller := pre.(caller);
+                            value := pre.(value);
+                            data := pre.(data);
+                            time := pre.(time)
+                          |}
+                    end)
       | JUMPDEST =>
         (fun pre => match pre.(prg_sfx) with
                       | nil => failure
@@ -568,7 +623,8 @@ Module EVM (U256:OrderedType).
                             prg_sfx := tl;
                             caller := pre.(caller);
                             value := pre.(value);
-                            data := pre.(data)
+                            data := pre.(data);
+                            time := pre.(time)
                             |}
                     end)
       | PUSH_N str => operation_sem (push_x (U str))
@@ -576,7 +632,7 @@ Module EVM (U256:OrderedType).
       | DUP2 => operation_sem dup2
       | DUP3 => operation_sem dup3
       | SWAP1 => operation_sem swap1
-      | SWAP2 => (fun _ => not_implemented)
+      | SWAP2 => operation_sem swap2
       | RETURN => (fun _ => not_implemented)
       | SUICIDE => (fun _ => suicide)
     end.
@@ -610,7 +666,10 @@ Module EVM (U256:OrderedType).
   Parameter c : U256.t.
   Parameter v : U256.t.
   Parameter d : list U256.t.
+  Parameter current_time : U256.t.
 
+  (* This results in a normal return. *)
+  (* Maybe the execution can start in the middle.  How? *)
   Definition ex := {|
     stc := nil;
     mem := Memory.empty U256.t;
@@ -619,53 +678,174 @@ Module EVM (U256:OrderedType).
     prg_sfx := example1;
     caller := c;
     value := v;
-    data := d
+    data := d;
+    time := current_time
   |}.
+
 
   Parameter tn : (to_nat (U "0x004f")) = 79.
   Parameter hg : (to_nat (U "0x00a4")) = 164.
   Parameter gg : (to_nat (U "0x005a")) = 90.
+  Lemma ff_ : U256.eq (U "0x40") (U "0x40").
+  Proof. auto.  Qed.
+  Parameter ff : U256.compare (U "0x40") (U "0x40") = @EQ U256.t U256.lt U256.eq (U "0x40") (U "0x40") ff_.
 
-  Goal apply_n 27 ex <> suicide.
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite tn.
-    compute -[apply_n].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite apply_S; compute -[apply_n NPeano.div].
+  Parameter zz : is_zero zero.
 
-    rewrite apply_S; compute -[apply_n NPeano.div].
+  Ltac run :=
+    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes]).
 
-    rewrite apply_S; compute -[apply_n NPeano.div].
+  Goal apply_n 1000 ex <> suicide.
+    run.
+    set b0 := is_zero _.
+    case_eq b0 => b0_eq.
+    {
+      run.
+      set b1 := is_zero _.
+      case_eq b1 => b1_eq.
+      {
+        run.
+        set b2 := is_zero _.
+        case_eq b2 => b2_eq.
+        {
+          run.
+          have -> : (to_nat (U "0x004d")) = 77 by admit.
+          compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+          run.
+          congruence.
+        }
+        {
+          run.
+          have -> : (to_nat (U "0x007d")) = 125 by admit.
+          compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+          progress run.
+          have -> : (to_nat (U "0x00ad")) = 173 by admit.
+          compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+          progress run.
+          set b3 := is_zero _.
+          case_eq b3 => b3_eq; run.
+          {
+            set b4 := is_zero _.
+            case_eq b4 => b4_eq; run.
+            {
+              set b5 := is_zero _.
+              case_eq b5 => b5_eq; run.
+              {
+                have -> : (to_nat (U "0x013b")) = 315 by admit.
+                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                run.
+                have -> : (to_nat (U "0x008e")) = 142 by admit.
+                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                run.
+                congruence.
+              }
+              {
+                have -> : (to_nat (U "0x0131")) = 305 by admit.
+                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                run.
+                idtac.
+                have -> : (to_nat (U "0x013b")) = 315 by admit.
+                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                run.
+                have -> : (to_nat (U "0x008e")) = 142 by admit.
+                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                run.
+                congruence.
+              }
+            }
+            {
+              have -> : (to_nat (U "0x0119")) = 281 by admit.
+              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+              run.
+              rewrite-/b4.
+              rewrite b4_eq.
+              run.
+              have -> : (to_nat (U "0x0131")) = 305 by admit.
+              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              run.
+              idtac.
+              have -> : (to_nat (U "0x013b")) = 315 by admit.
+              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              run.
+              have -> : (to_nat (U "0x008e")) = 142 by admit.
+              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              run.
+              congruence.
+            }
+          }
+          {
+            run.
+            idtac.
 
-    rewrite apply_S; compute -[apply_n NPeano.div].
-    rewrite hg.
-
-    compute -[apply_n].
-
-    rewrite apply_S; compute -[apply_n].
-    rewrite apply_S; compute -[apply_n].
-    rewrite apply_S; compute -[apply_n].
-    rewrite apply_S; compute -[apply_n].
-    rewrite apply_S; compute -[apply_n].
-    rewrite apply_S; compute -[apply_n].
-    rewrite apply_S; compute -[apply_n].
-
-    rewrite gg.
-    congruence.
+            have -> : (to_nat (U "0x013a"))= 314 by admit.
+            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            run.
+            idtac.
+            have -> : (to_nat (U "0x008e")) = 142 by admit.
+            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            run.
+            congruence.
+          }
+        }
+      }
+      {
+        have -> : (to_nat (U "0x0070")) = 112 by admit.
+        compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+        run.
+        have -> : (to_nat (U "0x0140")) = 320 by admit.
+        compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+        run.
+        set b7 := is_zero _.
+        case_eq b7 => b7_eq.
+        {
+          run.
+          idtac.
+          set b8 := is_zero _.
+          case_eq b8 => b8_eq.
+          {
+            run.
+            (* wow SUICIDE *)
+            admit.
+          }
+          {
+            run.
+            idtac.
+            have -> : (to_nat (U "0x01de")) = 478 by admit.
+            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              run.
+            idtac.
+            have -> : (to_nat (U "0x007b")) = 123 by admit.
+            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              run.
+            congruence.
+          }
+        }
+        {
+          have -> : (to_nat (U "0x01df")) = 479 by admit.
+            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              run.
+          idtac.
+            have -> : (to_nat (U "0x007b")) = 123 by admit.
+            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              run.
+            congruence.
+        }
+      }
+    }
+    {
+      rewrite tn.
+      compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+        run.
+      rewrite hg.
+      compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+        run.
+      idtac.
+      rewrite gg.
+      compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+        run.
+      idtac.
+      congruence.
+    }
   Qed.
 
 End EVM.
