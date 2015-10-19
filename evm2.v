@@ -1,3 +1,7 @@
+(* Coq 8.5pl5 with ssreflect 1.5. *)
+(* On ProofGeneral 4.3pre150930.  *)
+
+
 Require Import String.
 Require Import List.
 Require Import FMapInterface.
@@ -6,7 +10,7 @@ Require Import ssreflect ssrbool.
 
 Module Lang.
 
-  Inductive instr := (** partial.  adding as necessary. *)
+  Inductive instr := (** partial.  adding those necessary. *)
   | STOP
   | ADD
   | SUB
@@ -56,41 +60,41 @@ Module Lang.
     match prog, bytes with
     | _, O => prog
     | PUSH_N str :: tl, S pre =>
-       drop_bytes tl (pre - (NPeano.div (String.length str) 2 - 1))
+      drop_bytes tl (pre - (string_half_len str - 1))
     | _ :: tl, S pre =>
       drop_bytes tl pre
     | nil, S _ => nil
     end.
 
   Definition example1 : list instr :=
-      PUSH_N "0x60" :: (* 2 *)
-      PUSH_N "0x40" :: (* 4 *)
-      MSTORE ::        (* 5 *)
-      PUSH_N "0x00" :: (* 7 *)
-      CALLDATALOAD ::  (* 8 *)
-      PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" :: (* 38 *)
-      SWAP1 :: (* 39 *)
-      DIV ::   (* 40 *)
-      DUP1 ::  (* 41 *)
-      PUSH_N "0x4665096d" :: (* 46 *)
-      instr_EQ :: (* 47 *)
-      PUSH_N "0x004f" :: (* 50 *)
-      JUMPI :: (* 51 *)
-      DUP1 :: (* 52 *)
-      PUSH_N "0xbe040fb0" :: (* 57 *)
-      instr_EQ :: (* 58 *)
-      PUSH_N "0x0070" :: (* 60 *)
-      JUMPI :: (* 61 *)
-      DUP1 ::  (* 62 *)
-      PUSH_N "0xdd467064" :: (* 67 *)
-      instr_EQ :: (* 68 *)
-      PUSH_N "0x007d" :: (* 71 *)
-      JUMPI :: (* 72 *)
-      PUSH_N "0x004d" :: (*75 *)
-      JUMP :: (* 76 *)
-      JUMPDEST :: (* 77 *)
-      STOP :: (* 78 *)
-      JUMPDEST :: (* 79 *)
+      PUSH_N "0x60" ::
+      PUSH_N "0x40" ::
+      MSTORE ::
+      PUSH_N "0x00" ::
+      CALLDATALOAD ::
+      PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" ::
+      SWAP1 ::
+      DIV ::
+      DUP1 ::
+      PUSH_N "0x4665096d" ::
+      instr_EQ ::
+      PUSH_N "0x004f" ::
+      JUMPI ::
+      DUP1 ::
+      PUSH_N "0xbe040fb0" ::
+      instr_EQ ::
+      PUSH_N "0x0070" ::
+      JUMPI ::
+      DUP1 ::
+      PUSH_N "0xdd467064" ::
+      instr_EQ ::
+      PUSH_N "0x007d" ::
+      JUMPI ::
+      PUSH_N "0x004d" ::
+      JUMP ::
+      JUMPDEST ::
+      STOP ::
+      JUMPDEST ::
       PUSH_N "0x005a" ::
       PUSH_N "0x04" ::
       POP ::
@@ -170,11 +174,11 @@ Module Lang.
       PUSH_N "0x0100" ::
       EXP ::
       SWAP1 ::
-      DIV :: 
+      DIV ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND :: 
+      AND ::
       CALLER ::
       PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
       AND ::
@@ -415,9 +419,6 @@ Module EVM (U256:OrderedType).
   Definition div_op := two_one_op div.
   Definition add_op := two_one_op add.
 
-  (* A question: what happens when dup1 instruction is executed on an empty stack? *)
-  (* Do we end up with a stack of length 1?  Answer: No.  See 9.4.2 of the yellow paper. *)
-
   Definition dup1 : operation :=
     fun s mem =>
       match s with
@@ -478,18 +479,18 @@ Module EVM (U256:OrderedType).
   Inductive result :=
   | continue : state -> result
   | suicide  : U256.t (* who gets the balance *) -> result
-  | returned : result
-  | stopped  : result
-  | end_of_program :result (* what actually happens? *)
-  | failure : result (* what actually happens? *)
+  | returned : state -> result
+  | stopped  : state -> result
+  | end_of_program : state -> result (* what actually happens? *)
+  | failure :  state -> result (* what actually happens? *)
   .
 
   Definition operation_sem (op : operation) (pre: state) : result :=
     match pre.(prg_sfx) with
-      | nil => end_of_program
+      | nil => end_of_program pre
       | _ :: tl =>
         match op pre.(stc) pre.(mem) with
-          | None => failure
+          | None => failure pre
           | Some (s,m) =>
             continue {| stc := s ;
               mem := m ;
@@ -506,7 +507,7 @@ Module EVM (U256:OrderedType).
 
   Definition reader (f : state -> U256.t) (pre : state) : result :=
     match pre.(prg_sfx) with
-      | nil => end_of_program
+      | nil => end_of_program pre
       | _ :: tl =>
         continue {| stc := f pre :: pre.(stc) ;
           mem := pre.(mem) ;
@@ -525,7 +526,7 @@ Module EVM (U256:OrderedType).
 
   Definition instr_sem (i : instr) : state -> result :=
     match i with
-      | STOP => (fun _ => stopped)
+      | STOP => (fun pre => stopped pre)
       | ADD => operation_sem add_op
       | SUB => operation_sem sub_op
       | DIV => operation_sem div_op
@@ -546,11 +547,11 @@ Module EVM (U256:OrderedType).
       | SLOAD => (fun pre => operation_sem (sload pre.(str)) pre)
       | SSTORE => (fun pre =>
                      match pre.(stc) with
-                     | nil => failure
-                     | _ :: nil => failure
+                     | nil => failure pre
+                     | _ :: nil => failure pre
                      | addr :: val :: stl =>
                        match pre.(prg_sfx) with
-                       | nil => failure
+                       | nil => failure pre
                        | _ :: cont => 
                          continue {|
                              stc := stl;
@@ -567,7 +568,7 @@ Module EVM (U256:OrderedType).
                      end)
       | JUMP => (fun pre =>
                    match pre.(stc) with
-                   | nil => failure
+                   | nil => failure pre
                    | hd :: tl =>
                      continue {|
                        stc := tl;
@@ -584,12 +585,12 @@ Module EVM (U256:OrderedType).
                 )
       | JUMPI => (fun pre =>
                     match pre.(stc) with
-                    | nil => failure
-                    | hd::nil => failure
+                    | nil => failure pre
+                    | hd::nil => failure pre
                     | dst :: cond :: tl_stc =>
                       if is_zero cond then
                         match pre.(prg_sfx) with
-                        | nil => failure
+                        | nil => failure pre
                         | _ :: tl =>
                           continue {|
                               stc := tl_stc;
@@ -618,7 +619,7 @@ Module EVM (U256:OrderedType).
                     end)
       | JUMPDEST =>
         (fun pre => match pre.(prg_sfx) with
-                      | nil => failure
+                      | nil => failure pre
                       | _ :: tl =>
                         continue {|
                             stc := pre.(stc);
@@ -638,10 +639,10 @@ Module EVM (U256:OrderedType).
       | DUP3 => operation_sem dup3
       | SWAP1 => operation_sem swap1
       | SWAP2 => operation_sem swap2
-      | RETURN => (fun _ => returned)
+      | RETURN => returned
       | SUICIDE => (fun pre =>
                       match pre.(stc) with
-                        | nil => failure
+                        | nil => failure pre
                         | hd :: _ => suicide hd
                       end
                    )
@@ -655,7 +656,7 @@ Module EVM (U256:OrderedType).
           | continue post =>  apply_n n' post
           | x => x
         end
-      | S n', nil => end_of_program
+      | S n', nil => end_of_program pre
     end.
 
   Lemma apply_S : forall n' pre,
@@ -666,7 +667,7 @@ Module EVM (U256:OrderedType).
           | continue post =>  apply_n n' post
           | x => x
         end
-      | nil => end_of_program
+      | nil => end_of_program pre
     end.
   Proof.
   auto.
@@ -703,12 +704,23 @@ Module EVM (U256:OrderedType).
 
   Parameter zz : is_zero zero.
 
-  Ltac run :=
-    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes]).
-
   Parameter somebody : U256.t.
 
-  Goal apply_n 1000 ex <> suicide somebody.
+  Definition interesting (r : result) (target : U256.t) :=
+    match r with
+      | continue _ => False
+      | suicide _  => True
+      | returned st
+      | stopped st  =>
+        s <> st.(str) /\ Memory.find zero st.(str) = Some target
+      | failure _ => True
+      | end_of_program _ => True
+    end.
+
+  Ltac run :=
+    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting]).
+
+  Goal interesting (apply_n 1000 ex) somebody -> False.
     run.
     set b0 := is_zero _.
     case_eq b0 => b0_eq.
@@ -723,17 +735,21 @@ Module EVM (U256:OrderedType).
         {
           run.
           have -> : (to_nat (U "0x004d")) = 77 by admit.
-          compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+          compute [drop_bytes string_half_len minus].
           run.
-          congruence.
+          rewrite/interesting/str.
+          case => ? _; done.
         }
         {
-          run.
-          have -> : (to_nat (U "0x007d")) = 125 by admit.
-          compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+          rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+          idtac.
+          have K : (to_nat (U "0x007d")) = 125 by admit.
+          rewrite [in X in drop_bytes _ X] K.
+          compute [drop_bytes minus string_half_len].
           progress run.
           have -> : (to_nat (U "0x00ad")) = 173 by admit.
-          compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+          compute [drop_bytes minus string_half_len].
+          rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
           progress run.
           set b3 := is_zero _.
           case_eq b3 => b3_eq; run.
@@ -742,48 +758,207 @@ Module EVM (U256:OrderedType).
             case_eq b4 => b4_eq; run.
             {
               set b5 := is_zero _.
-              case_eq b5 => b5_eq; run.
+              case_eq b5 => b5_eq.
               {
+                rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+                rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+                rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+                rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+                rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+                rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+                run.
                 have -> : (to_nat (U "0x013b")) = 315 by admit.
-                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                compute [drop_bytes string_half_len minus].
+
+                rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
                 run.
                 have -> : (to_nat (U "0x008e")) = 142 by admit.
-                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                compute [drop_bytes string_half_len minus].
                 run.
-                congruence.
+                rewrite/interesting.
+                rewrite/str.
+                move => [_].
+
+(* Stop here to see the conditions for storage[1] change:
+
+  b0 := is_zero
+          match
+            U256.compare (U "0x4665096d")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b0_eq : b0 = true
+  "input[0] <> ..."
+
+  b1 := is_zero
+          match
+            U256.compare (U "0xbe040fb0")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b1_eq : b1 = true
+  "input[0] <> ..."
+
+  b2 := is_zero
+          match
+            U256.compare (U "0xdd467064")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b2_eq : b2 = false
+
+  "input[0] begins with 0xdd467064".
+
+
+
+  K : to_nat (U "0x007d") = 125
+  b3 := is_zero
+          (if is_zero
+                match
+                  U256.compare
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       c)
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       (and
+                          (U "0xffffffffffffffffffffffffffffffffffffffff")
+                          (div
+                             match
+                               (fix find (k : U256.t)
+                                         (s : list (U256.t * U256.t))
+                                         {struct s} : 
+                                option U256.t :=
+                                  match s with
+                                  | nil => None
+                                  | (k', x) :: s' =>
+                                      match U256.compare k k' with
+                                      | LT _ => None
+                                      | EQ _ => Some x
+                                      | GT _ => find k s'
+                                      end
+                                  end) (U "0x00")
+                                 (let (this, _) := s in this)
+                             with
+                             | Some b => b
+                             | None => zero
+                             end (exp (U "0x0100") (U "0x00")))))
+                with
+                | LT _ => zero
+                | EQ _ => one
+                | GT _ => zero
+                end
+           then one
+           else zero) : bool
+  b3_eq : b3 = true
+  "caller == storage[0]"
+
+  b4 := is_zero
+          (if is_zero
+                match
+                  U256.compare (nth (to_nat (U "0x04")) d zero)
+                    current_time
+                with
+                | LT _ => zero
+                | EQ _ => zero
+                | GT _ => one
+                end
+           then one
+           else zero) : bool
+  b4_eq : b4 = true
+  "input[4] > current_time"
+
+
+  b5 := is_zero
+          (if is_zero
+                match
+                  U256.compare
+                    match
+                      (fix find (k : U256.t) (s : list (U256.t * U256.t))
+                                {struct s} : option U256.t :=
+                         match s with
+                         | nil => None
+                         | (k', x) :: s' =>
+                             match U256.compare k k' with
+                             | LT _ => None
+                             | EQ _ => Some x
+                             | GT _ => find k s'
+                             end
+                         end) (U "0x01") (let (this, _) := s in this)
+                    with
+                    | Some b => b
+                    | None => zero
+                    end (U "0x00")
+                with
+                | LT _ => zero
+                | EQ _ => one
+                | GT _ => zero
+                end
+           then one
+           else zero) : bool
+  b5_eq : b5 = true
+
+  "storage[1] == 0"
+
+*)
+
+
+                (* storage[1] = input[4] *)
+                (* storage at zero has not changed *)
+                admit.
               }
               {
                 have -> : (to_nat (U "0x0131")) = 305 by admit.
-                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                compute [drop_bytes string_half_len minus].
                 run.
                 idtac.
                 have -> : (to_nat (U "0x013b")) = 315 by admit.
-                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                compute [drop_bytes string_half_len minus].
                 run.
                 have -> : (to_nat (U "0x008e")) = 142 by admit.
-                compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+                compute [drop_bytes string_half_len minus].
+                (* pushn 40, mload, dup1, dup3, dup2 *)
+
                 run.
-                congruence.
+                rewrite/interesting/str.
+
+                case => ? _.
+                done.
               }
             }
             {
               have -> : (to_nat (U "0x0119")) = 281 by admit.
-              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus].
+              compute [drop_bytes string_half_len minus].
               run.
               rewrite-/b4.
               rewrite b4_eq.
               run.
               have -> : (to_nat (U "0x0131")) = 305 by admit.
-              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              compute [drop_bytes string_half_len minus];
               run.
               idtac.
               have -> : (to_nat (U "0x013b")) = 315 by admit.
-              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              compute [drop_bytes string_half_len minus];
               run.
               have -> : (to_nat (U "0x008e")) = 142 by admit.
-              compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+              compute [drop_bytes string_half_len minus];
               run.
-              congruence.
+
+              rewrite/interesting/str.
+              by case => ? _.
             }
           }
           {
@@ -791,22 +966,23 @@ Module EVM (U256:OrderedType).
             idtac.
 
             have -> : (to_nat (U "0x013a"))= 314 by admit.
-            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            compute [drop_bytes string_half_len minus];
             run.
             idtac.
             have -> : (to_nat (U "0x008e")) = 142 by admit.
-            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            compute [drop_bytes string_half_len minus];
             run.
-            congruence.
+            rewrite/interesting/str.
+            by move => [? _].
           }
         }
       }
       {
         have -> : (to_nat (U "0x0070")) = 112 by admit.
-        compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+        compute [drop_bytes string_half_len minus];
         run.
         have -> : (to_nat (U "0x0140")) = 320 by admit.
-        compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+        compute [drop_bytes string_half_len minus];
         run.
         set b7 := is_zero _.
         case_eq b7 => b7_eq.
@@ -817,8 +993,121 @@ Module EVM (U256:OrderedType).
           case_eq b8 => b8_eq.
           {
             run.
-            (* stop here and see the condition for SUICIDE *)
 
+            idtac.
+            have -> : (U "0x00") = zero by admit.
+            have -> : forall x, (exp x zero) = one by admit.
+            have -> : forall y, (div y one)  = y   by admit.
+            (* inheritor is find zero s *)
+
+            idtac.
+
+(*
+  Stop here to see the conditions for `SUICIDE` to happen.
+
+  b0 := is_zero
+          match
+            U256.compare (U "0x4665096d")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b0_eq : b0 = true
+  "input[0] <> ..."
+
+
+  b1 := is_zero
+          match
+            U256.compare (U "0xbe040fb0")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b1_eq : b1 = false
+  "input[0] begins with 0xbe040fb0"
+
+
+  b7 := is_zero
+          (if is_zero
+                match
+                  U256.compare
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       c)
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       (and
+                          (U "0xffffffffffffffffffffffffffffffffffffffff")
+                          (div
+                             match
+                               (fix find (k : U256.t)
+                                         (s : list (U256.t * U256.t))
+                                         {struct s} : 
+                                option U256.t :=
+                                  match s with
+                                  | nil => None
+                                  | (k', x) :: s' =>
+                                      match U256.compare k k' with
+                                      | LT _ => None
+                                      | EQ _ => Some x
+                                      | GT _ => find k s'
+                                      end
+                                  end) (U "0x00")
+                                 (let (this, _) := s in this)
+                             with
+                             | Some b => b
+                             | None => zero
+                             end (exp (U "0x0100") (U "0x00")))))
+                with
+                | LT _ => zero
+                | EQ _ => one
+                | GT _ => zero
+                end
+           then one
+           else zero) : bool
+  b7_eq : b7 = true
+  "storage[0] == caller"
+
+
+  b8 := is_zero
+          (if is_zero
+                match
+                  U256.compare current_time
+                    match
+                      (fix find (k : U256.t) (s : list (U256.t * U256.t))
+                                {struct s} : option U256.t :=
+                         match s with
+                         | nil => None
+                         | (k', x) :: s' =>
+                             match U256.compare k k' with
+                             | LT _ => None
+                             | EQ _ => Some x
+                             | GT _ => find k s'
+                             end
+                         end) (U "0x01") (let (this, _) := s in this)
+                    with
+                    | Some b => b
+                    | None => zero
+                    end
+                with
+                | LT _ => zero
+                | EQ _ => zero
+                | GT _ => one
+                end
+           then one
+           else zero) : bool
+  b8_eq : b8 = true
+  "current time > storage[1]"
+ *)
+
+
+            (* stop here and see the condition for SUICIDE *)
             (* next question.  how to change the storage? *)
             admit.
           }
@@ -826,40 +1115,45 @@ Module EVM (U256:OrderedType).
             run.
             idtac.
             have -> : (to_nat (U "0x01de")) = 478 by admit.
-            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            compute [drop_bytes string_half_len minus];
               run.
             idtac.
             have -> : (to_nat (U "0x007b")) = 123 by admit.
-            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            compute [drop_bytes string_half_len minus];
               run.
-            congruence.
+
+            rewrite/interesting/str.
+            case => ? _; done.
           }
         }
         {
           have -> : (to_nat (U "0x01df")) = 479 by admit.
-            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            compute [drop_bytes string_half_len minus];
               run.
           idtac.
             have -> : (to_nat (U "0x007b")) = 123 by admit.
-            compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+            compute [drop_bytes string_half_len minus];
               run.
-            congruence.
+
+            idtac.
+            rewrite/interesting/str.
+            case => ? _; done.
         }
       }
     }
     {
       rewrite tn.
-      compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+      compute [drop_bytes string_half_len minus];
         run.
       rewrite hg.
-      compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+      compute [drop_bytes string_half_len minus];
         run.
       idtac.
       rewrite gg.
-      compute [drop_bytes NPeano.div NPeano.divmod String.length fst minus];
+      compute [drop_bytes string_half_len minus];
         run.
-      idtac.
-      congruence.
+      rewrite/interesting/str.
+      case => ? _; done.
     }
   Qed.
 
