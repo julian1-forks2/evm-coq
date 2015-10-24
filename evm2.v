@@ -10,9 +10,11 @@ Require Import ssreflect ssrbool.
 
 Module Lang.
 
+  (* TODO: sort by opcode *)
   Inductive instr := (** partial.  adding those necessary. *)
   | STOP
   | ADD
+  | MUL
   | SUB
   | DIV
   | EXP
@@ -21,6 +23,7 @@ Module Lang.
   | AND
   | ISZERO
   | CALLER
+  | GAS
   | CALLVALUE
   | CALLDATALOAD
   | CALLDATASIZE
@@ -38,8 +41,19 @@ Module Lang.
   | DUP1
   | DUP2
   | DUP3
+  | DUP4
+  | DUP5
+  | DUP6
+  | DUP7
+  | DUP8
+  | DUP9
   | SWAP1
   | SWAP2
+  | SWAP3
+  | SWAP4
+  | CALL
+  | LOG2
+  | LOG3
   | RETURN
   | SUICIDE
   .
@@ -65,6 +79,342 @@ Module Lang.
       drop_bytes tl pre
     | nil, S _ => nil
     end.
+
+  Definition example2 :=
+  (* taken from
+     https://etherchain.org/account/0xad8d3a5d2d92eb14bb56ca9f380be35b8efe0c04#codeDisasm *)
+    PUSH_N "0x60" ::
+    PUSH_N "0x40" ::
+    MSTORE ::
+    CALLDATASIZE ::
+    ISZERO ::
+    PUSH_N "0x0053" ::
+    JUMPI ::
+    PUSH_N "0x00" ::
+    CALLDATALOAD ::
+    PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" ::
+    SWAP1 ::
+    DIV ::
+    DUP1 ::
+    PUSH_N "0x3feb1bd8" ::
+    instr_EQ ::
+    PUSH_N "0x00aa" ::
+    JUMPI ::
+    DUP1 ::
+    PUSH_N "0x6042a760" ::
+    instr_EQ ::
+    PUSH_N "0x00c9" ::
+    JUMPI ::
+    DUP1 ::
+    PUSH_N "0xb214faa5" ::
+    instr_EQ ::
+    PUSH_N "0x00ee" ::
+    JUMPI ::
+    PUSH_N "0x0053" ::
+    JUMP ::
+    JUMPDEST ::
+    PUSH_N "0x00a8" ::
+    JUMPDEST ::
+    CALLER ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    PUSH_N "0xceaafb6781e240ba6b317a906047690d1c227df2d967ff3f53b44f14a62c2cab" ::
+    CALLVALUE ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    DUP3 ::
+    DUP2 ::
+    MSTORE ::
+    PUSH_N "0x20" ::
+    ADD ::
+    SWAP2 ::
+    POP ::
+    POP ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    SWAP2 ::
+    SUB ::
+    SWAP1 ::
+    LOG2 ::
+    JUMPDEST ::
+    JUMP ::
+    JUMPDEST ::
+    STOP ::
+    JUMPDEST ::
+    PUSH_N "0x00c7" ::
+    PUSH_N "0x04" ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    POP ::
+    PUSH_N "0x0154" ::
+    JUMP ::
+    JUMPDEST ::
+    STOP ::
+    JUMPDEST ::
+    PUSH_N "0x00ec" ::
+    PUSH_N "0x04" ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    POP ::
+    PUSH_N "0x0233" ::
+    JUMP ::
+    JUMPDEST ::
+    STOP ::
+    JUMPDEST ::
+    PUSH_N "0x00ff" ::
+    PUSH_N "0x04" ::
+    DUP1 ::
+    CALLDATALOAD ::
+    SWAP1 ::
+    PUSH_N "0x20" ::
+    ADD ::
+    POP ::
+    PUSH_N "0x0101" ::
+    JUMP ::
+    JUMPDEST ::
+    STOP ::
+    JUMPDEST ::
+    DUP1 ::
+    CALLER ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    PUSH_N "0x19dacbf83c5de6658e14cbf7bcae5c15eca2eedecf1c66fbca928e4d351bea0f" ::
+    CALLVALUE ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    DUP3 ::
+    DUP2 ::
+    MSTORE ::
+    PUSH_N "0x20" ::
+    ADD ::
+    SWAP2 ::
+    POP ::
+    POP ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    SWAP2 ::
+    SUB ::
+    SWAP1 ::
+    LOG3 ::
+    JUMPDEST ::
+    POP ::
+    JUMP ::
+    JUMPDEST ::
+    PUSH_N "0x00" ::
+    PUSH_N "0x00" ::
+    SWAP1 ::
+    SLOAD ::
+    SWAP1 ::
+    PUSH_N "0x0100" ::
+    EXP ::
+    SWAP1 ::
+    DIV ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    CALLER ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    instr_EQ ::
+    ISZERO ::
+    PUSH_N "0x022d" ::
+    JUMPI ::
+    DUP2 ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    PUSH_N "0x00" ::
+    DUP3 ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    SWAP1 ::
+    POP ::
+    PUSH_N "0x00" ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    DUP4 ::
+    SUB ::
+    DUP2 ::
+    DUP6 ::
+    DUP9 ::
+    DUP9 ::
+    CALL ::
+    SWAP4 ::
+    POP ::
+    POP ::
+    POP ::
+    POP ::
+    POP ::
+    DUP2 ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    DUP4 ::
+    PUSH_N "0x4c13017ee95afc4bbd8a701dd9fbc9733f1f09f5a1b5438b5b9abd48e4c92d78" ::
+    DUP4 ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    DUP3 ::
+    DUP2 ::
+    MSTORE ::
+    PUSH_N "0x20" ::
+    ADD ::
+    SWAP2 ::
+    POP ::
+    POP ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    SWAP2 ::
+    SUB ::
+    SWAP1 ::
+    LOG3 ::
+    JUMPDEST ::
+    JUMPDEST ::
+    POP ::
+    POP ::
+    POP ::
+    JUMP ::
+    JUMPDEST ::
+    PUSH_N "0x00" ::
+    PUSH_N "0x00" ::
+    SWAP1 ::
+    SLOAD ::
+    SWAP1 ::
+    PUSH_N "0x0100" ::
+    EXP ::
+    SWAP1 ::
+    DIV ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    CALLER ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    instr_EQ ::
+    ISZERO ::
+    PUSH_N "0x034b" ::
+    JUMPI ::
+    DUP3 ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    PUSH_N "0xb214faa5" ::
+    DUP3 ::
+    DUP5 ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP4 ::
+    PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" ::
+    MUL ::
+    DUP2 ::
+    MSTORE ::
+    PUSH_N "0x04" ::
+    ADD ::
+    DUP1 ::
+    DUP3 ::
+    DUP2 ::
+    MSTORE ::
+    PUSH_N "0x20" ::
+    ADD ::
+    SWAP2 ::
+    POP ::
+    POP ::
+    PUSH_N "0x00" ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    DUP4 ::
+    SUB ::
+    DUP2 ::
+    DUP6 ::
+    DUP9 ::
+    PUSH_N "0x8502" ::
+    GAS ::
+    SUB ::
+    CALL ::
+    ISZERO ::
+    PUSH_N "0x0002" ::
+    JUMPI ::
+    POP ::
+    POP ::
+    POP ::
+    POP ::
+    DUP3 ::
+    PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+    AND ::
+    DUP5 ::
+    PUSH_N "0x260c3af1b30cb645202dd6dbf41affda680b1ffebd32d401b7f121c2b9262680" ::
+    DUP5 ::
+    DUP5 ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    DUP4 ::
+    DUP2 ::
+    MSTORE ::
+    PUSH_N "0x20" ::
+    ADD ::
+    DUP3 ::
+    DUP2 ::
+    MSTORE ::
+    PUSH_N "0x20" ::
+    ADD ::
+    SWAP3 ::
+    POP ::
+    POP ::
+    POP ::
+    PUSH_N "0x40" ::
+    MLOAD ::
+    DUP1 ::
+    SWAP2 ::
+    SUB ::
+    SWAP1 ::
+    LOG3 ::
+    JUMPDEST ::
+    JUMPDEST ::
+    POP ::
+    POP ::
+    POP ::
+    POP ::
+    JUMP :: nil.
 
 End Lang.
 
@@ -203,8 +553,10 @@ Module EVM (U256:OrderedType).
     one_one_op (fun n => List.nth (to_nat n) input zero).
 
   Parameter div : U256.t -> U256.t -> U256.t.
+  Parameter mul : U256.t -> U256.t -> U256.t.
 
   Definition div_op := two_one_op div.
+  Definition mul_op := two_one_op mul.
   Definition add_op := two_one_op add.
 
   Definition dup1 : operation :=
@@ -226,6 +578,34 @@ Module EVM (U256:OrderedType).
       match s with
         | a :: b :: c :: l => Some (c :: a :: b :: c :: l, mem)
         | _ => None
+      end.
+
+  Definition dup4 : operation :=
+    fun s mem =>
+      match s with
+        | a :: b :: c :: d :: l => Some (d :: a :: b :: c :: d :: l, mem)
+        | _ => None
+      end.
+
+  Fixpoint nth_opt {A} (n : nat) (lst : list A) :=
+    match n, lst with
+    | O, hd :: _ => Some hd
+    | S pre, _ :: tl => nth_opt pre tl
+    | _, _ => None
+    end.
+
+  Definition stack_dup n (s : stack) :=
+    match nth_opt n s with
+    | Some elm => Some (elm :: s)
+    | None => None
+    end.
+
+
+  Definition dup_n (n : nat) : operation :=
+    fun s mem =>
+      match stack_dup n s with
+      | Some new_s => Some (new_s, mem)
+      | None => None
       end.
 
   Definition eq_op : operation := two_one_op
@@ -252,6 +632,27 @@ Module EVM (U256:OrderedType).
         | _ => None
       end.
 
+  Definition swap3 : operation :=
+    fun s mem =>
+      match s with
+        | a :: b :: c :: d :: l =>
+          Some (d :: b :: c :: a :: l, mem)
+        | _ => None
+      end.
+
+  Definition swap4 : operation :=
+    fun s mem =>
+      match s with
+        | a :: b :: c :: d :: e :: l =>
+          Some (e :: b :: c :: d :: a :: l, mem)
+        | _ => None
+      end.
+
+  Parameter source_of_whatever : Set.
+  Parameter read_whatever : source_of_whatever -> U256.t.
+  Parameter wa : source_of_whatever -> source_of_whatever.
+  Parameter initial_noise : source_of_whatever.
+
   Record state :=
     {   stc     : stack
       ; mem     : memory
@@ -262,6 +663,7 @@ Module EVM (U256:OrderedType).
       ; value   : U256.t
       ; data    : list U256.t
       ; time    : U256.t
+      ; noise   : source_of_whatever
     }.
 
   Inductive result :=
@@ -271,6 +673,7 @@ Module EVM (U256:OrderedType).
   | stopped  : state -> result
   | end_of_program : state -> result (* what actually happens? *)
   | failure :  state -> result (* what actually happens? *)
+  | not_implemented : state -> result
   .
 
   Definition operation_sem (op : operation) (pre: state) : result :=
@@ -288,9 +691,27 @@ Module EVM (U256:OrderedType).
               caller := pre.(caller);
               value := pre.(value);
               data  := pre.(data);
-              time  := pre.(time)
+              time  := pre.(time);
+              noise := pre.(noise)
             |}
         end
+    end.
+
+  Definition noop (pre : state) : result :=
+    match pre.(prg_sfx) with
+    | nil => end_of_program pre
+    | _ :: tl =>
+      continue {| stc := pre.(stc);
+                  mem := pre.(mem);
+                  str := pre.(str);
+                  program := pre.(program);
+                  prg_sfx := tl;
+                  caller := pre.(caller);
+                  value := pre.(value);
+                  data := pre.(data);
+                  time := pre.(time);
+                  noise := pre.(noise)
+               |}
     end.
 
   Definition reader (f : state -> U256.t) (pre : state) : result :=
@@ -305,8 +726,25 @@ Module EVM (U256:OrderedType).
           caller := pre.(caller);
           value  := pre.(value);
           data   := pre.(data);
-          time   := pre.(time)
+          time   := pre.(time);
+          noise  := pre.(noise)
         |}
+    end.
+
+  Definition random_reader (pre : state) : result :=
+    match pre.(prg_sfx) with
+      | nil => end_of_program pre
+      | _ :: tl =>
+        continue {| stc := read_whatever pre.(noise) :: pre.(stc) ;
+                    mem := pre.(mem);
+                    str := pre.(str);
+                    program := pre.(program);
+                    prg_sfx := tl;
+                    caller := pre.(caller);
+                    value := pre.(value);
+                    data := pre.(data);
+                    time := pre.(time);
+                    noise := wa pre.(noise) |}
     end.
 
   Parameter U : string -> U256.t.
@@ -316,6 +754,7 @@ Module EVM (U256:OrderedType).
     match i with
       | STOP => (fun pre => stopped pre)
       | ADD => operation_sem add_op
+      | MUL => operation_sem mul_op
       | SUB => operation_sem sub_op
       | DIV => operation_sem div_op
       | EXP => operation_sem exp_op
@@ -323,6 +762,7 @@ Module EVM (U256:OrderedType).
       | instr_EQ => operation_sem eq_op
       | AND => operation_sem and_op
       | ISZERO => operation_sem iszero
+      | GAS    => random_reader (* TODO: implement gas mechanism somehow *)
       | CALLER => reader caller
       | CALLVALUE => reader value
       | CALLDATALOAD => (fun pre => operation_sem (calldataload pre.(data)) pre)
@@ -350,7 +790,8 @@ Module EVM (U256:OrderedType).
                              caller := pre.(caller);
                              value := pre.(value);
                              data := pre.(data);
-                             time := pre.(time)
+                             time := pre.(time);
+                             noise := pre.(noise)
                            |}
                        end
                      end)
@@ -367,7 +808,8 @@ Module EVM (U256:OrderedType).
                        caller := pre.(caller);
                        value := pre.(value);
                        data := pre.(data);
-                       time := pre.(time)
+                       time := pre.(time);
+                       noise := pre.(noise)
                      |}
                    end
                 )
@@ -389,7 +831,8 @@ Module EVM (U256:OrderedType).
                               caller := pre.(caller);
                               value := pre.(value);
                               data := pre.(data);
-                              time := pre.(time)
+                              time := pre.(time);
+                              noise := pre.(noise)
                             |}
                         end
                       else
@@ -402,7 +845,8 @@ Module EVM (U256:OrderedType).
                             caller := pre.(caller);
                             value := pre.(value);
                             data := pre.(data);
-                            time := pre.(time)
+                            time := pre.(time);
+                            noise := pre.(noise)
                           |}
                     end)
       | JUMPDEST =>
@@ -418,15 +862,27 @@ Module EVM (U256:OrderedType).
                             caller := pre.(caller);
                             value := pre.(value);
                             data := pre.(data);
-                            time := pre.(time)
+                            time := pre.(time);
+                            noise := pre.(noise)
                             |}
                     end)
       | PUSH_N str => operation_sem (push_x (U str))
       | DUP1 => operation_sem dup1
       | DUP2 => operation_sem dup2
       | DUP3 => operation_sem dup3
+      | DUP4 => operation_sem dup4
+      | DUP5 => operation_sem (dup_n 5)
+      | DUP6 => operation_sem (dup_n 6)
+      | DUP7 => operation_sem (dup_n 7)
+      | DUP8 => operation_sem (dup_n 8)
+      | DUP9 => operation_sem (dup_n 9)
       | SWAP1 => operation_sem swap1
       | SWAP2 => operation_sem swap2
+      | SWAP3 => operation_sem swap3
+      | SWAP4 => operation_sem swap4
+      | LOG2  => noop
+      | LOG3 => noop
+      | CALL => not_implemented
       | RETURN => returned
       | SUICIDE => (fun pre =>
                       match pre.(stc) with
@@ -474,12 +930,13 @@ Module EVM (U256:OrderedType).
     stc := nil;
     mem := Memory.empty U256.t;
     str := s;
-    program := example1;
-    prg_sfx := example1;
+    program := example2;
+    prg_sfx := example2;
     caller := c;
     value := v;
     data := d;
-    time := current_time
+    time := current_time;
+    noise := initial_noise
   |}.
 
 
@@ -503,9 +960,81 @@ Module EVM (U256:OrderedType).
         s <> st.(str) /\ Memory.find zero st.(str) = Some target
       | failure _ => True
       | end_of_program _ => True
+      | not_implemented _ => True
     end.
 
   Ltac run :=
-    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting]).
+    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting find Memory.find Memory.add]).
+
+  Goal interesting (apply_n 1000 ex) somebody -> False.
+    run.
+    set b0 := is_zero _.
+    case_eq b0 => b0_eq.
+    {
+      run.
+      set b1 := is_zero _.
+      case_eq b1 => b1_eq.
+      {
+        run.
+        set b2 := is_zero _.
+        case_eq b2 => b2_eq.
+        {
+          run.
+          set b3 := is_zero _.
+          case_eq b3 => b3_eq.
+          {
+            run.
+            have -> : (to_nat (U "0x0053")) = 83 by admit.
+            compute [drop_bytes string_half_len minus].
+            run.
+
+
+            Lemma find_add :
+              forall k (v : U256.t) orig,
+                Memory.find k (Memory.add k v orig) = Some v.
+            Proof.
+            Admitted.
+
+            rewrite find_add.
+
+            set found := Memory.find _ _.
+            have -> : found = Some (U "0x60") by admit.
+
+            have -> : (to_nat (U "0x60")) = 96 by admit.
+            compute [drop_bytes string_half_len minus].
+
+            run.
+
+            set dst := to_nat _.
+
+            have -> : dst = 96 by admit.
+
+
+
+
+  Ltac run2 :=
+    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting find Memory.find Memory.add]).
+
+
+
+
+            rewrite ff.
+            rewrite-/find.
+            set x := _ (U "0x40") _.
+            have -> : x = Some (U "0x60") by admit.
+            have -> : (to_nat (U "0x60")) = 96 by admit.
+            compute [drop_bytes string_half_len minus].
+            run.
+
+          }
+          {}
+        }
+        {
+        }
+      }
+      {}
+    }
+    {
+    }
 
 End EVM.
