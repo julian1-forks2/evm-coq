@@ -1,4 +1,4 @@
-(* Coq 8.5pl5 with ssreflect 1.5 with mathcomp 1.5. *)
+(* Coq 8.5pl5 with ssreflect 1.5. *)
 (* On ProofGeneral 4.3pre150930.  *)
 
 
@@ -6,7 +6,7 @@ Require Import String.
 Require Import List.
 Require Import FMapInterface.
 
-Require Import ssreflect ssrbool zmodp.
+Require Import ssreflect ssrbool.
 
 Module Lang.
 
@@ -82,6 +82,7 @@ Module Lang.
     | nil, S _ => nil
     end.
 
+(*
   Definition example2 :=
   (* taken from
      https://etherchain.org/account/0xad8d3a5d2d92eb14bb56ca9f380be35b8efe0c04#codeDisasm *)
@@ -416,7 +417,7 @@ Module Lang.
     POP ::
     POP ::
     POP ::
-    JUMP :: nil.
+    JUMP :: nil. *)
 
 End Lang.
 
@@ -668,7 +669,7 @@ Module EVM (U256:DecidableTypeFull).
   | stopped  : state -> result
   | end_of_program : state -> result (* what actually happens? *)
   | failure :  state -> result (* what actually happens? *)
-  | not_implemented : state -> result
+  | not_implemented : instr -> state -> result
   .
 
   Definition operation_sem (op : operation) (pre: state) : result :=
@@ -877,7 +878,7 @@ Module EVM (U256:DecidableTypeFull).
       | SWAP4 => operation_sem swap4
       | LOG2  => noop
       | LOG3 => noop
-      | CALL => not_implemented
+      | CALL => (fun pre => not_implemented CALL pre)
       | RETURN => returned
       | SUICIDE => (fun pre =>
                       match pre.(stc) with
@@ -1159,7 +1160,7 @@ Definition example1 : list instr :=
         store_init <> st.(str) /\ Memory.find Uzero st.(str) = Some target
       | failure _ => True
       | end_of_program _ => True
-      | not_implemented _ => True
+      | not_implemented _ _ => True
     end.
 
   Require Import Ascii.
