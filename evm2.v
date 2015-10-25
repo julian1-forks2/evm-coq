@@ -1,4 +1,4 @@
-(* Coq 8.5pl5 with ssreflect 1.5. *)
+(* Coq 8.5pl5 with ssreflect 1.5 with mathcomp 1.5. *)
 (* On ProofGeneral 4.3pre150930.  *)
 
 
@@ -6,7 +6,7 @@ Require Import String.
 Require Import List.
 Require Import FMapInterface.
 
-Require Import ssreflect ssrbool.
+Require Import ssreflect ssrbool zmodp.
 
 Module Lang.
 
@@ -69,6 +69,8 @@ Module Lang.
     | PUSH_N str => string_half_len str
     | _ => 1
     end.
+
+  Require Import Coq.Program.Wf.
 
   Fixpoint drop_bytes (prog : list instr) (bytes : nat) {struct bytes} :=
     match prog, bytes with
@@ -418,22 +420,28 @@ Module Lang.
 
 End Lang.
 
-Module EVM (U256:OrderedType).
+Require Import Equalities.
+
+Module EVM (U256:DecidableTypeFull).
 
   Import Lang.
 
-  Parameter is_zero : U256.t -> bool.
-  Parameter zero : U256.t.
-  Parameter one  : U256.t.
-  Parameter succ : U256.t -> U256.t.
-  Parameter to_nat : U256.t -> nat.
-  Parameter sub : U256.t -> U256.t -> U256.t.
-  Parameter add : U256.t -> U256.t -> U256.t.
-  Parameter and : U256.t -> U256.t -> U256.t.
+  Parameter Uzero : U256.t.
+  Parameter Uone  : U256.t.
+  Parameter Usucc : U256.t -> U256.t.
+  Parameter Uto_nat : U256.t -> nat.
+  Parameter Usub : U256.t -> U256.t -> U256.t.
+  Parameter Uadd : U256.t -> U256.t -> U256.t.
+  Parameter Uand : U256.t -> U256.t -> U256.t.
+  Parameter Uexp : U256.t -> U256.t -> U256.t.
+  Parameter Udiv : U256.t -> U256.t -> U256.t.
+  Parameter Umul : U256.t -> U256.t -> U256.t.
+  Parameter Ugt  : U256.t -> U256.t -> bool.
+
 
   Definition stack := list U256.t.
 
-  Require Import FMapList.
+  Require Import FMapWeakList.
 
   Module Memory := Make (U256).
 
@@ -442,10 +450,6 @@ Module EVM (U256:OrderedType).
   Definition m T := option (T * memory).
 
   Definition operation := stack -> memory -> m stack (* maybe with side-effect? *).
-
-  (* trying to encode
-     https://etherchain.org/account/0x10ebb6b1607de9c08c61c6f6044b8edc93b8e9c9#codeDisasm
-  *)
 
   Require Import List.
 
@@ -472,7 +476,7 @@ Module EVM (U256:OrderedType).
       match s with
         | nil => None
         | addr :: l =>
-          Some (match Memory.find addr mem with Some b => b | None => zero end :: l, mem)
+          Some (match Memory.find addr mem with Some b => b | None => Uzero end :: l, mem)
       end.
 
 
@@ -489,9 +493,9 @@ Module EVM (U256:OrderedType).
     match len with
       | O => mem
       | S len' =>
-        memwrite_n (succ start_addr (* what happens when this overflows? *) ) len'
+        memwrite_n (Usucc start_addr (* what happens when this overflows? *) ) len'
         (match source with nil => nil | _ :: tl => tl end)
-        (Memory.add start_addr (match source with nil => zero | hd :: _ => hd end) mem)
+        (Memory.add start_addr (match source with nil => Uzero | hd :: _ => hd end) mem)
     end.
 
   Fixpoint drop {A : Type} (n : nat) (lst : list A) :=
@@ -505,7 +509,7 @@ Module EVM (U256:OrderedType).
     fun s mem =>
       match s with
         | m0 :: m1 :: m2 :: l =>
-          Some (l, memwrite_n m0 (to_nat m2) (drop (to_nat m1) input) mem)
+          Some (l, memwrite_n m0 (Uto_nat m2) (drop (Uto_nat m1) input) mem)
         | _ => None
       end.
 
@@ -514,7 +518,7 @@ Module EVM (U256:OrderedType).
       match s with
         | nil => None
         | h :: tl =>
-          Some ((if is_zero h then one else zero) :: tl, mem)
+          Some ((if U256.eqb Uzero h then Uone else Uzero) :: tl, mem)
       end.
 
   Definition two_two_op (f : U256.t -> U256.t -> (U256.t * U256.t)) : operation :=
@@ -525,8 +529,6 @@ Module EVM (U256:OrderedType).
         | _ => None
       end.
 
-  Parameter exp : U256.t -> U256.t -> U256.t.
-
   Definition two_one_op (f : U256.t -> U256.t -> U256.t) : operation :=
     fun s mem =>
       match s with
@@ -535,9 +537,9 @@ Module EVM (U256:OrderedType).
         | a :: b :: l => Some ((f a b) :: l, mem)
       end.
 
-  Definition exp_op : operation := two_one_op exp.
+  Definition exp_op : operation := two_one_op Uexp.
 
-  Definition and_op : operation := two_one_op and.
+  Definition and_op : operation := two_one_op Uand.
 
   Definition one_one_op (f : U256.t -> U256.t) : operation :=
     fun s mem =>
@@ -547,17 +549,16 @@ Module EVM (U256:OrderedType).
       end.
 
   Definition sload storage : operation :=
-    one_one_op (fun addr => match Memory.find addr storage with Some b => b | None => zero end).
+    one_one_op (fun addr => match Memory.find addr storage with Some b => b | None => Uzero end).
 
   Definition calldataload (input : list U256.t) : operation :=
-    one_one_op (fun n => List.nth (to_nat n) input zero).
+    one_one_op (fun n => List.nth (Uto_nat n) input Uzero).
 
-  Parameter div : U256.t -> U256.t -> U256.t.
-  Parameter mul : U256.t -> U256.t -> U256.t.
 
-  Definition div_op := two_one_op div.
-  Definition mul_op := two_one_op mul.
-  Definition add_op := two_one_op add.
+
+  Definition div_op := two_one_op Udiv.
+  Definition mul_op := two_one_op Umul.
+  Definition add_op := two_one_op Uadd.
 
   Definition dup1 : operation :=
     fun s mem =>
@@ -609,18 +610,12 @@ Module EVM (U256:OrderedType).
       end.
 
   Definition eq_op : operation := two_one_op
-    (fun a b => match U256.compare a b with
-                | EQ _ => one
-                | _ => zero
-              end).
+    (fun a b => if U256.eqb a b then Uone else Uzero).
 
   Definition gt : operation := two_one_op
-    (fun a b => match U256.compare a b with
-                | GT _ => one
-                | _ => zero
-              end).
+    (fun a b => if Ugt a b then Uone else Uzero).
 
-  Definition sub_op : operation := two_one_op sub.
+  Definition sub_op : operation := two_one_op Usub.
 
   Definition swap1 : operation := two_two_op (fun a b => (b, a)).
 
@@ -804,7 +799,7 @@ Module EVM (U256:OrderedType).
                        mem := pre.(mem);
                        str := pre.(str);
                        program := pre.(program);
-                       prg_sfx := drop_bytes pre.(program) (to_nat hd);
+                       prg_sfx := drop_bytes pre.(program) (Uto_nat hd);
                        caller := pre.(caller);
                        value := pre.(value);
                        data := pre.(data);
@@ -818,7 +813,7 @@ Module EVM (U256:OrderedType).
                     | nil => failure pre
                     | hd::nil => failure pre
                     | dst :: cond :: tl_stc =>
-                      if is_zero cond then
+                      if U256.eqb Uzero cond then
                         match pre.(prg_sfx) with
                         | nil => failure pre
                         | _ :: tl =>
@@ -841,7 +836,7 @@ Module EVM (U256:OrderedType).
                             mem := pre.(mem);
                             str := pre.(str);
                             program := pre.(program);
-                            prg_sfx := drop_bytes pre.(program) (to_nat dst);
+                            prg_sfx := drop_bytes pre.(program) (Uto_nat dst);
                             caller := pre.(caller);
                             value := pre.(value);
                             data := pre.(data);
@@ -913,43 +908,247 @@ Module EVM (U256:OrderedType).
         end
       | nil => end_of_program pre
     end.
-  Proof.
-  auto.
-  Qed.
+  Proof. by []. Qed.
 
+  Lemma eqeq : forall x, U256.eqb x x.
+  Proof. by move=> ?; rewrite/is_true U256.eqb_eq. Qed.
 
-  Parameter c : U256.t.
-  Parameter v : U256.t.
-  Parameter d : list U256.t.
+  Parameter somebody : U256.t.
+
+  Parameter caller_ex1 : U256.t.
+  Parameter value_ex1 : U256.t.
+  Parameter data_ex1 : list U256.t.
   Parameter current_time : U256.t.
-  Parameter s : Memory.t U256.t.
+  Parameter store_init : Memory.t U256.t.
+
+Definition example1 : list instr :=
+      PUSH_N "0x60" ::
+      PUSH_N "0x40" ::
+      MSTORE ::
+      PUSH_N "0x00" ::
+      CALLDATALOAD ::
+      PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" ::
+      SWAP1 ::
+      DIV ::
+      DUP1 ::
+      PUSH_N "0x4665096d" ::
+      instr_EQ ::
+      PUSH_N "0x004f" ::
+      JUMPI ::
+      DUP1 ::
+      PUSH_N "0xbe040fb0" ::
+      instr_EQ ::
+      PUSH_N "0x0070" ::
+      JUMPI ::
+      DUP1 ::
+      PUSH_N "0xdd467064" ::
+      instr_EQ ::
+      PUSH_N "0x007d" ::
+      JUMPI ::
+      PUSH_N "0x004d" ::
+      JUMP ::
+      JUMPDEST ::
+      STOP ::
+      JUMPDEST ::
+      PUSH_N "0x005a" ::
+      PUSH_N "0x04" ::
+      POP ::
+      PUSH_N "0x00a4" ::
+      JUMP ::
+      JUMPDEST ::
+      PUSH_N "0x40" ::
+      MLOAD ::
+      DUP1 ::
+      DUP3 ::
+      DUP2 ::
+      MSTORE ::
+      PUSH_N "0x20" ::
+      ADD ::
+      SWAP2 ::
+      POP ::
+      POP ::
+      PUSH_N "0x40" ::
+      MLOAD ::
+      DUP1 ::
+      SWAP2 ::
+      SUB ::
+      SWAP1 ::
+      RETURN ::
+      JUMPDEST ::
+      PUSH_N "0x007b" ::
+      PUSH_N "0x04" ::
+      POP ::
+      PUSH_N "0x0140" ::
+      JUMP ::
+      JUMPDEST ::
+      STOP ::
+      JUMPDEST ::
+      PUSH_N "0x008e" ::
+      PUSH_N "0x04" ::
+      DUP1 ::
+      CALLDATALOAD ::
+      SWAP1 ::
+      PUSH_N "0x20" ::
+      ADD ::
+      POP ::
+      PUSH_N "0x00ad" ::
+      JUMP ::
+      JUMPDEST ::
+      PUSH_N "0x40" ::
+      MLOAD ::
+      DUP1 ::
+      DUP3 ::
+      DUP2 ::
+      MSTORE :: 
+      PUSH_N "0x20" ::
+      ADD ::
+      SWAP2 ::
+      POP ::
+      POP ::
+      PUSH_N "0x40" ::
+      MLOAD ::
+      DUP1 ::
+      SWAP2 ::
+      SUB ::
+      SWAP1 ::
+      RETURN ::
+      JUMPDEST ::
+      PUSH_N "0x01" ::
+      PUSH_N "0x00" ::
+      POP ::
+      SLOAD ::
+      DUP2 ::
+      JUMP ::
+      JUMPDEST ::
+      PUSH_N "0x00" ::
+      PUSH_N "0x00" ::
+      PUSH_N "0x00" ::
+      SWAP1 ::
+      SLOAD ::
+      SWAP1 ::
+      PUSH_N "0x0100" ::
+      EXP ::
+      SWAP1 ::
+      DIV ::
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      CALLER ::
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      instr_EQ ::
+      ISZERO ::
+      PUSH_N "0x013a" ::
+      JUMPI ::
+      TIMESTAMP ::
+      DUP3 ::
+      instr_GT ::
+      DUP1 ::
+      ISZERO ::
+      PUSH_N "0x0119" ::
+      JUMPI ::
+      POP ::
+      PUSH_N "0x00" ::
+      PUSH_N "0x01" ::
+      PUSH_N "0x00" ::
+      POP ::
+      SLOAD ::
+      instr_EQ ::
+      JUMPDEST ::
+      ISZERO ::
+      PUSH_N "0x0131" ::
+      JUMPI ::
+      DUP2 ::
+      PUSH_N "0x01" ::
+      PUSH_N "0x00" ::
+      POP ::
+      DUP2 ::
+      SWAP1 ::
+      SSTORE ::
+      POP ::
+      PUSH_N "0x01" ::
+      SWAP1 ::
+      POP ::
+      PUSH_N "0x013b" ::
+      JUMP ::
+      JUMPDEST ::
+      PUSH_N "0x00" ::
+      SWAP1 ::
+      POP ::
+      PUSH_N "0x013b" ::
+      JUMP ::
+      JUMPDEST ::
+      JUMPDEST ::
+      SWAP2 ::
+      SWAP1 ::
+      POP ::
+      JUMP ::
+      JUMPDEST ::
+      PUSH_N "0x00" ::
+      PUSH_N "0x00" ::
+      SWAP1 ::
+      SLOAD ::
+      SWAP1 ::
+      PUSH_N "0x0100" ::
+      EXP ::
+      SWAP1 ::
+      DIV :: 
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      CALLER ::
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      instr_EQ ::
+      ISZERO ::
+      PUSH_N "0x01df" ::
+      JUMPI ::
+      PUSH_N "0x01" ::
+      PUSH_N "0x00" ::
+      POP ::
+      SLOAD ::
+      TIMESTAMP ::
+      instr_GT ::
+      ISZERO ::
+      PUSH_N "0x01de" ::
+      JUMPI ::
+      PUSH_N "0x00" ::
+      PUSH_N "0x00" ::
+      SWAP1 ::
+      SLOAD ::
+      SWAP1 ::
+      PUSH_N "0x0100" ::
+      EXP ::
+      SWAP1 ::
+      DIV ::
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
+      AND ::
+      SUICIDE :: (* here, payout occurs *)
+      JUMPDEST ::
+      JUMPDEST ::
+      JUMPDEST ::
+      JUMP :: nil.
+
 
   (* This results in a normal return. *)
   (* Maybe the execution can start in the middle.  How? *)
   Definition ex := {|
     stc := nil;
     mem := Memory.empty U256.t;
-    str := s;
-    program := example2;
-    prg_sfx := example2;
-    caller := c;
-    value := v;
-    data := d;
+    str := store_init;
+    program := example1;
+    prg_sfx := example1;
+    caller := caller_ex1;
+    value := value_ex1;
+    data := data_ex1;
     time := current_time;
     noise := initial_noise
   |}.
 
-
-  Parameter tn : (to_nat (U "0x004f")) = 79.
-  Parameter hg : (to_nat (U "0x00a4")) = 164.
-  Parameter gg : (to_nat (U "0x005a")) = 90.
-  Lemma ff_ : U256.eq (U "0x40") (U "0x40").
-  Proof. auto.  Qed.
-  Parameter ff : U256.compare (U "0x40") (U "0x40") = @EQ U256.t U256.lt U256.eq (U "0x40") (U "0x40") ff_.
-
-  Parameter zz : is_zero zero.
-
-  Parameter somebody : U256.t.
 
   Definition interesting (r : result) (target : U256.t) :=
     match r with
@@ -957,84 +1156,474 @@ Module EVM (U256:OrderedType).
       | suicide _  => True
       | returned st
       | stopped st  =>
-        s <> st.(str) /\ Memory.find zero st.(str) = Some target
+        store_init <> st.(str) /\ Memory.find Uzero st.(str) = Some target
       | failure _ => True
       | end_of_program _ => True
       | not_implemented _ => True
     end.
 
-  Ltac run :=
-    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting find Memory.find Memory.add]).
+  Require Import Ascii.
+
+  Open Scope char_scope.
+  Print string.
+
+  Definition read_hex_char (c : ascii) : option nat :=
+    match c with
+    | "0" => Some 0
+    | "1" => Some 1
+    | "2" => Some 2
+    | "3" => Some 3
+    | "4" => Some 4
+    | "5" => Some 5
+    | "6" => Some 6
+    | "7" => Some 7
+    | "8" => Some 8
+    | "9" => Some 9
+    | "a" => Some 10
+    | "b" => Some 11
+    | "c" => Some 12
+    | "d" => Some 13
+    | "e" => Some 14
+    | "f" => Some 15
+    | _   => None
+    end.
+
+
+  Fixpoint read_hex (carry: nat) (str : string) : nat :=
+    match str with
+    | EmptyString => carry
+    | String c rest =>
+      match read_hex_char c with
+      | None => 0
+      | Some num => read_hex (carry * 16 + num) rest
+      end
+    end.
+
+  Definition literal_to_nat (str : string) : nat :=
+    match str with
+    | String "0" (String "x" rest) => read_hex 0 rest
+    | _ => 0
+    end.
+
+  Parameter Uliteral : forall str,
+      (Uto_nat (U str)) = literal_to_nat str.
+
+
+  Ltac step := rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting find Memory.find Memory.add].
+
+  Ltac run := repeat step.
+
+  Ltac solve_jump :=
+    rewrite [in X in drop_bytes _ X] Uliteral;
+    compute [drop_bytes string_half_len minus literal_to_nat read_hex read_hex_char plus mult].
 
   Goal interesting (apply_n 1000 ex) somebody -> False.
-    run.
-    set b0 := is_zero _.
+    rewrite/ex/example1.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+
+    set b0 := U256.eqb _ _.
     case_eq b0 => b0_eq.
     {
       run.
-      set b1 := is_zero _.
+      set b1 := U256.eqb _ _.
       case_eq b1 => b1_eq.
       {
         run.
-        set b2 := is_zero _.
+        set b2 := U256.eqb _ _.
         case_eq b2 => b2_eq.
         {
           run.
-          set b3 := is_zero _.
-          case_eq b3 => b3_eq.
-          {
-            run.
-            have -> : (to_nat (U "0x0053")) = 83 by admit.
-            compute [drop_bytes string_half_len minus].
-            run.
-
-
-            Lemma find_add :
-              forall k (v : U256.t) orig,
-                Memory.find k (Memory.add k v orig) = Some v.
-            Proof.
-            Admitted.
-
-            rewrite find_add.
-
-            set found := Memory.find _ _.
-            have -> : found = Some (U "0x60") by admit.
-
-            have -> : (to_nat (U "0x60")) = 96 by admit.
-            compute [drop_bytes string_half_len minus].
-
-            run.
-
-            set dst := to_nat _.
-
-            have -> : dst = 96 by admit.
-
-
-
-
-  Ltac run2 :=
-    repeat (rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting find Memory.find Memory.add]).
-
-
-
-
-            rewrite ff.
-            rewrite-/find.
-            set x := _ (U "0x40") _.
-            have -> : x = Some (U "0x60") by admit.
-            have -> : (to_nat (U "0x60")) = 96 by admit.
-            compute [drop_bytes string_half_len minus].
-            run.
-
-          }
-          {}
+          solve_jump.
+          run.
+          rewrite/interesting/str.
+          case => ? _; done.
         }
         {
+          rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting].
+          solve_jump.
+          run.
+
+          solve_jump.
+          run.
+
+          set b3 := U256.eqb _ _.
+          case_eq b3 => b3_eq; run.
+          {
+            set b4 := U256.eqb _ _.
+            case_eq b4 => b4_eq; run.
+            {
+              set b5 := U256.eqb _ _.
+              case_eq b5 => b5_eq.
+              {
+                run.
+                solve_jump.
+                run.
+                solve_jump.
+                run.
+                rewrite/interesting.
+                rewrite/str.
+                move => [_].
+
+(* Stop here to see the conditions for storage[1] change:
+
+  b0 := is_zero
+          match
+            U256.compare (U "0x4665096d")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b0_eq : b0 = true
+  "input[0] <> ..."
+
+  b1 := is_zero
+          match
+            U256.compare (U "0xbe040fb0")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b1_eq : b1 = true
+  "input[0] <> ..."
+
+  b2 := is_zero
+          match
+            U256.compare (U "0xdd467064")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b2_eq : b2 = false
+
+  "input[0] begins with 0xdd467064".
+
+
+
+  K : to_nat (U "0x007d") = 125
+  b3 := is_zero
+          (if is_zero
+                match
+                  U256.compare
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       c)
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       (and
+                          (U "0xffffffffffffffffffffffffffffffffffffffff")
+                          (div
+                             match
+                               (fix find (k : U256.t)
+                                         (s : list (U256.t * U256.t))
+                                         {struct s} : 
+                                option U256.t :=
+                                  match s with
+                                  | nil => None
+                                  | (k', x) :: s' =>
+                                      match U256.compare k k' with
+                                      | LT _ => None
+                                      | EQ _ => Some x
+                                      | GT _ => find k s'
+                                      end
+                                  end) (U "0x00")
+                                 (let (this, _) := s in this)
+                             with
+                             | Some b => b
+                             | None => zero
+                             end (exp (U "0x0100") (U "0x00")))))
+                with
+                | LT _ => zero
+                | EQ _ => one
+                | GT _ => zero
+                end
+           then one
+           else zero) : bool
+  b3_eq : b3 = true
+  "caller == storage[0]"
+
+  b4 := is_zero
+          (if is_zero
+                match
+                  U256.compare (nth (to_nat (U "0x04")) d zero)
+                    current_time
+                with
+                | LT _ => zero
+                | EQ _ => zero
+                | GT _ => one
+                end
+           then one
+           else zero) : bool
+  b4_eq : b4 = true
+  "input[4] > current_time"
+
+
+  b5 := is_zero
+          (if is_zero
+                match
+                  U256.compare
+                    match
+                      (fix find (k : U256.t) (s : list (U256.t * U256.t))
+                                {struct s} : option U256.t :=
+                         match s with
+                         | nil => None
+                         | (k', x) :: s' =>
+                             match U256.compare k k' with
+                             | LT _ => None
+                             | EQ _ => Some x
+                             | GT _ => find k s'
+                             end
+                         end) (U "0x01") (let (this, _) := s in this)
+                    with
+                    | Some b => b
+                    | None => zero
+                    end (U "0x00")
+                with
+                | LT _ => zero
+                | EQ _ => one
+                | GT _ => zero
+                end
+           then one
+           else zero) : bool
+  b5_eq : b5 = true
+
+  "storage[1] == 0"
+
+*)
+
+
+                (* storage[1] = input[4] *)
+                (* storage at zero has not changed *)
+                admit.
+              }
+              {
+                solve_jump.
+                run.
+
+                
+
+                solve_jump.
+                run.
+                solve_jump.
+                run.
+                rewrite/interesting/str.
+
+                case => ? _.
+                done.
+              }
+            }
+            {
+              solve_jump.
+              run.
+              rewrite-/b4.
+              rewrite b4_eq.
+              run.
+              solve_jump.
+              run.
+              solve_jump.
+              run.
+              solve_jump.
+              run.
+
+              rewrite/interesting/str.
+              by case => ? _.
+            }
+          }
+          {
+            run.
+            solve_jump.
+            run.
+            solve_jump.
+            run.
+            rewrite/interesting/str.
+            by move => [? _].
+          }
         }
       }
-      {}
+      {
+        solve_jump.
+        run.
+        solve_jump.
+        run.
+        set b7 := U256.eqb _ _.
+        case_eq b7 => b7_eq.
+        {
+          run.
+          set b8 := U256.eqb _ _.
+          case_eq b8 => b8_eq.
+          {
+            run.
+
+            have -> : (U "0x00") = Uzero by admit.
+            have -> : forall x, (Uexp x Uzero) = Uone by admit.
+            have -> : forall y, (Udiv y Uone)  = y   by admit.
+            (* inheritor is find zero s *)
+
+            idtac.
+
+(*
+  Stop here to see the conditions for `SUICIDE` to happen.
+
+  b0 := is_zero
+          match
+            U256.compare (U "0x4665096d")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b0_eq : b0 = true
+  "input[0] <> ..."
+
+
+  b1 := is_zero
+          match
+            U256.compare (U "0xbe040fb0")
+              (div (nth (to_nat (U "0x00")) d zero)
+                 (U
+                    "0x0100000000000000000000000000000000000000000000000000000000"))
+          with
+          | LT _ => zero
+          | EQ _ => one
+          | GT _ => zero
+          end : bool
+  b1_eq : b1 = false
+  "input[0] begins with 0xbe040fb0"
+
+
+  b7 := is_zero
+          (if is_zero
+                match
+                  U256.compare
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       c)
+                    (and (U "0xffffffffffffffffffffffffffffffffffffffff")
+                       (and
+                          (U "0xffffffffffffffffffffffffffffffffffffffff")
+                          (div
+                             match
+                               (fix find (k : U256.t)
+                                         (s : list (U256.t * U256.t))
+                                         {struct s} : 
+                                option U256.t :=
+                                  match s with
+                                  | nil => None
+                                  | (k', x) :: s' =>
+                                      match U256.compare k k' with
+                                      | LT _ => None
+                                      | EQ _ => Some x
+                                      | GT _ => find k s'
+                                      end
+                                  end) (U "0x00")
+                                 (let (this, _) := s in this)
+                             with
+                             | Some b => b
+                             | None => zero
+                             end (exp (U "0x0100") (U "0x00")))))
+                with
+                | LT _ => zero
+                | EQ _ => one
+                | GT _ => zero
+                end
+           then one
+           else zero) : bool
+  b7_eq : b7 = true
+  "storage[0] == caller"
+
+
+  b8 := is_zero
+          (if is_zero
+                match
+                  U256.compare current_time
+                    match
+                      (fix find (k : U256.t) (s : list (U256.t * U256.t))
+                                {struct s} : option U256.t :=
+                         match s with
+                         | nil => None
+                         | (k', x) :: s' =>
+                             match U256.compare k k' with
+                             | LT _ => None
+                             | EQ _ => Some x
+                             | GT _ => find k s'
+                             end
+                         end) (U "0x01") (let (this, _) := s in this)
+                    with
+                    | Some b => b
+                    | None => zero
+                    end
+                with
+                | LT _ => zero
+                | EQ _ => zero
+                | GT _ => one
+                end
+           then one
+           else zero) : bool
+  b8_eq : b8 = true
+  "current time > storage[1]"
+ *)
+
+
+            (* stop here and see the condition for SUICIDE *)
+            (* next question.  how to change the storage? *)
+            admit.
+          }
+          {
+            run.
+            solve_jump.
+            run.
+            solve_jump.
+
+            run.
+
+            rewrite/interesting/str.
+            case => ? _; done.
+          }
+        }
+        {
+          solve_jump.
+          run.
+          solve_jump.
+          run.
+          rewrite/interesting/str.
+          case => ? _; done.
+        }
+      }
     }
     {
+      solve_jump.
+      run.
+      solve_jump.
+      run.
+      solve_jump.
+      run.
+      idtac.
+      rewrite/interesting/str.
+      case => ? _; done.
     }
+  Qed.
 
 End EVM.
