@@ -1,4 +1,4 @@
-(* Coq 8.5pl5 with ssreflect 1.5. *)
+(* Coq 8.4pl5 with ssreflect 1.5. *)
 (* On ProofGeneral 4.3pre150930.  *)
 
 
