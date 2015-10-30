@@ -2,6 +2,7 @@
 (* On ProofGeneral 4.3pre150930.  *)
 
 
+Require Import Ascii.
 Require Import String.
 Require Import List.
 Require Import FMapInterface.
@@ -157,13 +158,24 @@ Module Lang.
   | read_e
   | read_f
   | read_hex : nat (* remaining read, after the next char *)
-               -> nat (* read so far *) -> decoding_mode
+               -> list ascii (* read so far in reverse *) -> decoding_mode
   .
 
   Inductive decode_result : Set :=
-  | success : list instr -> decode_result
-  | failure : string     -> decode_result
+  | decode_success : list instr -> decode_result
+  | decode_failure : string     -> decode_result
   .
+
+  Close Scope string_scope.
+  Open Scope char_scope.
+  Definition rev0x : list ascii := "x" :: "0" :: nil.
+  Fixpoint rev_string_inner (lst : list ascii) (acc : string): string :=
+    match lst with
+    | nil => acc
+    | hd :: tl => rev_string_inner tl (String hd acc)
+    end.
+
+  Definition rev_string lst := rev_string_inner lst EmptyString.
 
   (* sofar accumulates instrucitons in the reverse order *)
 
@@ -173,12 +185,12 @@ Module Lang.
   | first_zero =>
     match str with
     | String "0" rest => decode_inner rest first_x sofar
-    | _ => failure "first nonzero"
+    | _ => decode_failure "first nonzero"
     end
   | first_x =>
     match str with
     | String "x" rest => decode_inner rest next_instr sofar
-    | _ => failure "second not x"
+    | _ => decode_failure "second not x"
     end
   | next_instr =>
     match str with
@@ -198,8 +210,8 @@ Module Lang.
     | String "d" rest => decode_inner rest read_d sofar
     | String "e" rest => decode_inner rest read_e sofar
     | String "f" rest => decode_inner rest read_f sofar
-    | EmptyString => success (List.rev sofar)
-    | _ => failure "?"
+    | EmptyString => decode_success (List.rev sofar)
+    | _ => decode_failure "?"
     end
   | read_0 =>
     match str with
@@ -215,11 +227,11 @@ Module Lang.
     | String "9" rest => decode_inner rest next_instr (MULMOD :: sofar)
     | String "a" rest => decode_inner rest next_instr (EXP :: sofar)
     | String "b" rest => decode_inner rest next_instr (SIGNEXTEND :: sofar)
-    | String "c" rest => failure "0c"
-    | String "d" rest => failure "0d"
-    | String "e" rest => failure "0e"
-    | String "f" rest => failure "0f"
-    | _ => failure "0?"
+    | String "c" rest => decode_failure "0c"
+    | String "d" rest => decode_failure "0d"
+    | String "e" rest => decode_failure "0e"
+    | String "f" rest => decode_failure "0f"
+    | _ => decode_failure "0?"
     end
   | read_1 =>
     match str with
@@ -234,17 +246,17 @@ Module Lang.
     | String "8" rest => decode_inner rest next_instr (XOR    :: sofar)
     | String "9" rest => decode_inner rest next_instr (NOT    :: sofar)
     | String "a" rest => decode_inner rest next_instr (BYTE   :: sofar)
-    | String "b" rest => failure "1b"
-    | String "c" rest => failure "1c"
-    | String "d" rest => failure "1d"
-    | String "e" rest => failure "1e"
-    | String "f" rest => failure "1f"
-    | _ => failure "1?"
+    | String "b" rest => decode_failure "1b"
+    | String "c" rest => decode_failure "1c"
+    | String "d" rest => decode_failure "1d"
+    | String "e" rest => decode_failure "1e"
+    | String "f" rest => decode_failure "1f"
+    | _ => decode_failure "1?"
     end
   | read_2 =>
     match str with
     | String "0" rest => decode_inner rest next_instr (SHA3  :: sofar)
-    | _ => failure "2?"
+    | _ => decode_failure "2?"
     end
   | read_3 =>
     match str with
@@ -261,10 +273,10 @@ Module Lang.
     | String "a" rest => decode_inner rest next_instr (GASPRICE :: sofar)
     | String "b" rest => decode_inner rest next_instr (EXTCODESIZE :: sofar)
     | String "c" rest => decode_inner rest next_instr (EXTCODECOPY :: sofar)
-    | String "d" rest => failure "3d"
-    | String "e" rest => failure "3e"
-    | String "f" rest => failure "3f"
-    | _ => failure "3?"
+    | String "d" rest => decode_failure "3d"
+    | String "e" rest => decode_failure "3e"
+    | String "f" rest => decode_failure "3f"
+    | _ => decode_failure "3?"
     end
   | read_4 =>
     match str with
@@ -274,17 +286,17 @@ Module Lang.
     | String "3" rest => decode_inner rest next_instr (NUMBER :: sofar)
     | String "4" rest => decode_inner rest next_instr (DIFFICULTY :: sofar)
     | String "5" rest => decode_inner rest next_instr (GASLIMIT :: sofar)
-    | String "6" rest => failure "46"
-    | String "7" rest => failure "47"
-    | String "8" rest => failure "48"
-    | String "9" rest => failure "49"
-    | String "a" rest => failure "4a"
-    | String "b" rest => failure "4b"
-    | String "c" rest => failure "4c"
-    | String "d" rest => failure "4d"
-    | String "e" rest => failure "4e"
-    | String "f" rest => failure "4f"
-    | _ => failure "4?"
+    | String "6" rest => decode_failure "46"
+    | String "7" rest => decode_failure "47"
+    | String "8" rest => decode_failure "48"
+    | String "9" rest => decode_failure "49"
+    | String "a" rest => decode_failure "4a"
+    | String "b" rest => decode_failure "4b"
+    | String "c" rest => decode_failure "4c"
+    | String "d" rest => decode_failure "4d"
+    | String "e" rest => decode_failure "4e"
+    | String "f" rest => decode_failure "4f"
+    | _ => decode_failure "4?"
     end
   | read_5 =>
     match str with
@@ -300,51 +312,51 @@ Module Lang.
     | String "9" rest => decode_inner rest next_instr (MSIZE :: sofar)
     | String "a" rest => decode_inner rest next_instr (GAS :: sofar)
     | String "b" rest => decode_inner rest next_instr (JUMPDEST :: sofar)
-    | String "c" rest => failure "5c"
-    | String "d" rest => failure "5d"
-    | String "e" rest => failure "5e"
-    | String "f" rest => failure "5f"
-    | _ => failure "5?"
+    | String "c" rest => decode_failure "5c"
+    | String "d" rest => decode_failure "5d"
+    | String "e" rest => decode_failure "5e"
+    | String "f" rest => decode_failure "5f"
+    | _ => decode_failure "5?"
     end
   | read_6 =>
     match str with
-    | String "0" rest => decode_inner rest (read_hex 2 0)  sofar
-    | String "1" rest => decode_inner rest (read_hex 4 0)  sofar
-    | String "2" rest => decode_inner rest (read_hex 6 0)  sofar
-    | String "3" rest => decode_inner rest (read_hex 8 0)  sofar
-    | String "4" rest => decode_inner rest (read_hex 10 0) sofar
-    | String "5" rest => decode_inner rest (read_hex 12 0) sofar
-    | String "6" rest => decode_inner rest (read_hex 14 0) sofar
-    | String "7" rest => decode_inner rest (read_hex 16 0) sofar
-    | String "8" rest => decode_inner rest (read_hex 18 0) sofar
-    | String "9" rest => decode_inner rest (read_hex 20 0) sofar
-    | String "a" rest => decode_inner rest (read_hex 22 0) sofar
-    | String "b" rest => decode_inner rest (read_hex 24 0) sofar
-    | String "c" rest => decode_inner rest (read_hex 26 0) sofar
-    | String "d" rest => decode_inner rest (read_hex 28 0) sofar
-    | String "e" rest => decode_inner rest (read_hex 30 0) sofar
-    | String "f" rest => decode_inner rest (read_hex 32 0) sofar
-    | _ => failure "6?"
+    | String "0" rest => decode_inner rest (read_hex 2 rev0x)  sofar
+    | String "1" rest => decode_inner rest (read_hex 4 rev0x)  sofar
+    | String "2" rest => decode_inner rest (read_hex 6 rev0x)  sofar
+    | String "3" rest => decode_inner rest (read_hex 8 rev0x)  sofar
+    | String "4" rest => decode_inner rest (read_hex 10 rev0x) sofar
+    | String "5" rest => decode_inner rest (read_hex 12 rev0x) sofar
+    | String "6" rest => decode_inner rest (read_hex 14 rev0x) sofar
+    | String "7" rest => decode_inner rest (read_hex 16 rev0x) sofar
+    | String "8" rest => decode_inner rest (read_hex 18 rev0x) sofar
+    | String "9" rest => decode_inner rest (read_hex 20 rev0x) sofar
+    | String "a" rest => decode_inner rest (read_hex 22 rev0x) sofar
+    | String "b" rest => decode_inner rest (read_hex 24 rev0x) sofar
+    | String "c" rest => decode_inner rest (read_hex 26 rev0x) sofar
+    | String "d" rest => decode_inner rest (read_hex 28 rev0x) sofar
+    | String "e" rest => decode_inner rest (read_hex 30 rev0x) sofar
+    | String "f" rest => decode_inner rest (read_hex 32 rev0x) sofar
+    | _ => decode_failure "6?"
     end
   | read_7 =>
     match str with
-    | String "0" rest => decode_inner rest (read_hex 34 0) sofar
-    | String "1" rest => decode_inner rest (read_hex 36 0) sofar
-    | String "2" rest => decode_inner rest (read_hex 38 0) sofar
-    | String "3" rest => decode_inner rest (read_hex 40 0) sofar
-    | String "4" rest => decode_inner rest (read_hex 42 0) sofar
-    | String "5" rest => decode_inner rest (read_hex 44 0) sofar
-    | String "6" rest => decode_inner rest (read_hex 46 0) sofar
-    | String "7" rest => decode_inner rest (read_hex 48 0) sofar
-    | String "8" rest => decode_inner rest (read_hex 50 0) sofar
-    | String "9" rest => decode_inner rest (read_hex 52 0) sofar
-    | String "a" rest => decode_inner rest (read_hex 54 0) sofar
-    | String "b" rest => decode_inner rest (read_hex 56 0) sofar
-    | String "c" rest => decode_inner rest (read_hex 58 0) sofar
-    | String "d" rest => decode_inner rest (read_hex 60 0) sofar
-    | String "e" rest => decode_inner rest (read_hex 62 0) sofar
-    | String "f" rest => decode_inner rest (read_hex 64 0) sofar
-    | _ => failure "7?"
+    | String "0" rest => decode_inner rest (read_hex 34 rev0x) sofar
+    | String "1" rest => decode_inner rest (read_hex 36 rev0x) sofar
+    | String "2" rest => decode_inner rest (read_hex 38 rev0x) sofar
+    | String "3" rest => decode_inner rest (read_hex 40 rev0x) sofar
+    | String "4" rest => decode_inner rest (read_hex 42 rev0x) sofar
+    | String "5" rest => decode_inner rest (read_hex 44 rev0x) sofar
+    | String "6" rest => decode_inner rest (read_hex 46 rev0x) sofar
+    | String "7" rest => decode_inner rest (read_hex 48 rev0x) sofar
+    | String "8" rest => decode_inner rest (read_hex 50 rev0x) sofar
+    | String "9" rest => decode_inner rest (read_hex 52 rev0x) sofar
+    | String "a" rest => decode_inner rest (read_hex 54 rev0x) sofar
+    | String "b" rest => decode_inner rest (read_hex 56 rev0x) sofar
+    | String "c" rest => decode_inner rest (read_hex 58 rev0x) sofar
+    | String "d" rest => decode_inner rest (read_hex 60 rev0x) sofar
+    | String "e" rest => decode_inner rest (read_hex 62 rev0x) sofar
+    | String "f" rest => decode_inner rest (read_hex 64 rev0x) sofar
+    | _ => decode_failure "7?"
     end
   | read_8 =>
     match str with
@@ -364,7 +376,7 @@ Module Lang.
     | String "d" rest => decode_inner rest next_instr (DUP14 :: sofar)
     | String "e" rest => decode_inner rest next_instr (DUP15 :: sofar)
     | String "f" rest => decode_inner rest next_instr (DUP16 :: sofar)
-    | _ => failure "8?"
+    | _ => decode_failure "8?"
     end
   | read_9 =>
     match str with
@@ -384,7 +396,7 @@ Module Lang.
     | String "d" rest => decode_inner rest next_instr (SWAP14 :: sofar)
     | String "e" rest => decode_inner rest next_instr (SWAP15 :: sofar)
     | String "f" rest => decode_inner rest next_instr (SWAP16 :: sofar)
-    | _ => failure "9?"
+    | _ => decode_failure "9?"
     end
   | read_a =>
     match str with
@@ -393,46 +405,64 @@ Module Lang.
     | String "2" rest => decode_inner rest next_instr (LOG2 :: sofar)
     | String "3" rest => decode_inner rest next_instr (LOG3 :: sofar)
     | String "4" rest => decode_inner rest next_instr (LOG4 :: sofar)
-    | String "5" rest => failure "a5"
-    | String "6" rest => failure "a6"
-    | String "7" rest => failure "a7"
-    | String "8" rest => failure "a8"
-    | String "9" rest => failure "a9"
-    | String "a" rest => failure "aa"
-    | String "b" rest => failure "ab"
-    | String "c" rest => failure "ac"
-    | String "d" rest => failure "ad"
-    | String "e" rest => failure "ae"
-    | String "f" rest => failure "af"
-    | _ => failure "a?"
+    | String "5" rest => decode_failure "a5"
+    | String "6" rest => decode_failure "a6"
+    | String "7" rest => decode_failure "a7"
+    | String "8" rest => decode_failure "a8"
+    | String "9" rest => decode_failure "a9"
+    | String "a" rest => decode_failure "aa"
+    | String "b" rest => decode_failure "ab"
+    | String "c" rest => decode_failure "ac"
+    | String "d" rest => decode_failure "ad"
+    | String "e" rest => decode_failure "ae"
+    | String "f" rest => decode_failure "af"
+    | _ => decode_failure "a?"
     end
-  | read_b => failure "b?"
-  | read_c => failure "c?"
-  | read_d => failure "d?"
-  | read_e => failure "e?"
+  | read_b => decode_failure "b?"
+  | read_c => decode_failure "c?"
+  | read_d => decode_failure "d?"
+  | read_e => decode_failure "e?"
   | read_f =>
     match str with
-    | String "0" rest => decode_inner rest next_instr (LOG0 :: sofar)
-    | String "1" rest => decode_inner rest next_instr (LOG1 :: sofar)
-    | String "2" rest => decode_inner rest next_instr (LOG2 :: sofar)
-    | String "3" rest => decode_inner rest next_instr (LOG3 :: sofar)
-    | String "4" rest => failure "f4"
-    | String "5" rest => failure "f5"
-    | String "6" rest => failure "f6"
-    | String "7" rest => failure "f7"
-    | String "8" rest => failure "f8"
-    | String "9" rest => failure "f9"
-    | String "a" rest => failure "fa"
-    | String "b" rest => failure "fb"
-    | String "c" rest => failure "fc"
-    | String "d" rest => failure "fd"
-    | String "e" rest => failure "fe"
+    | String "0" rest => decode_inner rest next_instr (CREATE :: sofar)
+    | String "1" rest => decode_inner rest next_instr (CALL :: sofar)
+    | String "2" rest => decode_inner rest next_instr (CALLCODE :: sofar)
+    | String "3" rest => decode_inner rest next_instr (RETURN :: sofar)
+    | String "4" rest => decode_failure "f4"
+    | String "5" rest => decode_failure "f5"
+    | String "6" rest => decode_failure "f6"
+    | String "7" rest => decode_failure "f7"
+    | String "8" rest => decode_failure "f8"
+    | String "9" rest => decode_failure "f9"
+    | String "a" rest => decode_failure "fa"
+    | String "b" rest => decode_failure "fb"
+    | String "c" rest => decode_failure "fc"
+    | String "d" rest => decode_failure "fd"
+    | String "e" rest => decode_failure "fe"
     | String "f" rest => decode_inner rest next_instr (SUICIDE :: sofar)
-    | _ => failure "f?"
+    | _ => decode_failure "f?"
     end
-  |_ => failure "decode not implemented"
+  | read_hex O acc => decode_failure "should not happen"
+  | read_hex (S O) acc =>
+    match str with
+    | EmptyString => decode_failure "end_of_string reading hex"
+    | String c rest =>
+      decode_inner rest next_instr (PUSH_N (rev_string (c :: acc)) :: sofar)
+    end
+  | read_hex (S pre) acc =>
+    match str with
+    | EmptyString => decode_failure "end_of_string reading hex"
+    | String c rest =>
+      decode_inner rest (read_hex pre (c :: acc)) sofar
+    end
   end
   .
+  (* Question: Is there a need to decode further after a failure *)
+
+  Definition decode (code : string) : decode_result :=
+    decode_inner code first_zero nil.
+
+  Open Scope string_scope.
 
 
 (*
@@ -1023,6 +1053,7 @@ Module EVM (U256:DecidableTypeFull).
   | end_of_program : state -> result (* what actually happens? *)
   | failure :  state -> result (* what actually happens? *)
   | not_implemented : instr -> state -> result
+  | decode_fail : result
   .
 
   Definition operation_sem (op : operation) (pre: state) : result :=
@@ -1255,23 +1286,27 @@ Module EVM (U256:DecidableTypeFull).
       | _ => not_implemented i
     end.
 
-  Fixpoint apply_n (n : nat) (pre : state) : result :=
-    match n, pre.(prg_sfx) with
+  Fixpoint apply_n (n : nat) (st : option state) : result :=
+    match st with
+    | None => decode_fail
+    | Some pre =>
+      match n, pre.(prg_sfx) with
       | O, _ => continue pre
       | S n', hd::_ =>
         match instr_sem hd pre with
-          | continue post =>  apply_n n' post
-          | x => x
+        | continue post =>  apply_n n' (Some post)
+        | x => x
         end
       | S n', nil => end_of_program pre
+      end
     end.
 
   Lemma apply_S : forall n' pre,
-    apply_n (S n') pre =
+    apply_n (S n') (Some pre) =
     match pre.(prg_sfx) with
-      | hd :: _ => 
+      | hd :: _ =>
         match instr_sem hd pre with
-          | continue post =>  apply_n n' post
+          | continue post =>  apply_n n' (Some post)
           | x => x
         end
       | nil => end_of_program pre
@@ -1289,234 +1324,27 @@ Module EVM (U256:DecidableTypeFull).
   Parameter current_time : U256.t.
   Parameter store_init : Memory.t U256.t.
 
-Definition example1 : list instr :=
-      PUSH_N "0x60" ::
-      PUSH_N "0x40" ::
-      MSTORE ::
-      PUSH_N "0x00" ::
-      CALLDATALOAD ::
-      PUSH_N "0x0100000000000000000000000000000000000000000000000000000000" ::
-      SWAP1 ::
-      DIV ::
-      DUP1 ::
-      PUSH_N "0x4665096d" ::
-      EQ ::
-      PUSH_N "0x004f" ::
-      JUMPI ::
-      DUP1 ::
-      PUSH_N "0xbe040fb0" ::
-      EQ ::
-      PUSH_N "0x0070" ::
-      JUMPI ::
-      DUP1 ::
-      PUSH_N "0xdd467064" ::
-      EQ ::
-      PUSH_N "0x007d" ::
-      JUMPI ::
-      PUSH_N "0x004d" ::
-      JUMP ::
-      JUMPDEST ::
-      STOP ::
-      JUMPDEST ::
-      PUSH_N "0x005a" ::
-      PUSH_N "0x04" ::
-      POP ::
-      PUSH_N "0x00a4" ::
-      JUMP ::
-      JUMPDEST ::
-      PUSH_N "0x40" ::
-      MLOAD ::
-      DUP1 ::
-      DUP3 ::
-      DUP2 ::
-      MSTORE ::
-      PUSH_N "0x20" ::
-      ADD ::
-      SWAP2 ::
-      POP ::
-      POP ::
-      PUSH_N "0x40" ::
-      MLOAD ::
-      DUP1 ::
-      SWAP2 ::
-      SUB ::
-      SWAP1 ::
-      RETURN ::
-      JUMPDEST ::
-      PUSH_N "0x007b" ::
-      PUSH_N "0x04" ::
-      POP ::
-      PUSH_N "0x0140" ::
-      JUMP ::
-      JUMPDEST ::
-      STOP ::
-      JUMPDEST ::
-      PUSH_N "0x008e" ::
-      PUSH_N "0x04" ::
-      DUP1 ::
-      CALLDATALOAD ::
-      SWAP1 ::
-      PUSH_N "0x20" ::
-      ADD ::
-      POP ::
-      PUSH_N "0x00ad" ::
-      JUMP ::
-      JUMPDEST ::
-      PUSH_N "0x40" ::
-      MLOAD ::
-      DUP1 ::
-      DUP3 ::
-      DUP2 ::
-      MSTORE :: 
-      PUSH_N "0x20" ::
-      ADD ::
-      SWAP2 ::
-      POP ::
-      POP ::
-      PUSH_N "0x40" ::
-      MLOAD ::
-      DUP1 ::
-      SWAP2 ::
-      SUB ::
-      SWAP1 ::
-      RETURN ::
-      JUMPDEST ::
-      PUSH_N "0x01" ::
-      PUSH_N "0x00" ::
-      POP ::
-      SLOAD ::
-      DUP2 ::
-      JUMP ::
-      JUMPDEST ::
-      PUSH_N "0x00" ::
-      PUSH_N "0x00" ::
-      PUSH_N "0x00" ::
-      SWAP1 ::
-      SLOAD ::
-      SWAP1 ::
-      PUSH_N "0x0100" ::
-      EXP ::
-      SWAP1 ::
-      DIV ::
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      CALLER ::
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      EQ ::
-      ISZERO ::
-      PUSH_N "0x013a" ::
-      JUMPI ::
-      TIMESTAMP ::
-      DUP3 ::
-      GT ::
-      DUP1 ::
-      ISZERO ::
-      PUSH_N "0x0119" ::
-      JUMPI ::
-      POP ::
-      PUSH_N "0x00" ::
-      PUSH_N "0x01" ::
-      PUSH_N "0x00" ::
-      POP ::
-      SLOAD ::
-      EQ ::
-      JUMPDEST ::
-      ISZERO ::
-      PUSH_N "0x0131" ::
-      JUMPI ::
-      DUP2 ::
-      PUSH_N "0x01" ::
-      PUSH_N "0x00" ::
-      POP ::
-      DUP2 ::
-      SWAP1 ::
-      SSTORE ::
-      POP ::
-      PUSH_N "0x01" ::
-      SWAP1 ::
-      POP ::
-      PUSH_N "0x013b" ::
-      JUMP ::
-      JUMPDEST ::
-      PUSH_N "0x00" ::
-      SWAP1 ::
-      POP ::
-      PUSH_N "0x013b" ::
-      JUMP ::
-      JUMPDEST ::
-      JUMPDEST ::
-      SWAP2 ::
-      SWAP1 ::
-      POP ::
-      JUMP ::
-      JUMPDEST ::
-      PUSH_N "0x00" ::
-      PUSH_N "0x00" ::
-      SWAP1 ::
-      SLOAD ::
-      SWAP1 ::
-      PUSH_N "0x0100" ::
-      EXP ::
-      SWAP1 ::
-      DIV :: 
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      CALLER ::
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      EQ ::
-      ISZERO ::
-      PUSH_N "0x01df" ::
-      JUMPI ::
-      PUSH_N "0x01" ::
-      PUSH_N "0x00" ::
-      POP ::
-      SLOAD ::
-      TIMESTAMP ::
-      GT ::
-      ISZERO ::
-      PUSH_N "0x01de" ::
-      JUMPI ::
-      PUSH_N "0x00" ::
-      PUSH_N "0x00" ::
-      SWAP1 ::
-      SLOAD ::
-      SWAP1 ::
-      PUSH_N "0x0100" ::
-      EXP ::
-      SWAP1 ::
-      DIV ::
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      PUSH_N "0xffffffffffffffffffffffffffffffffffffffff" ::
-      AND ::
-      SUICIDE :: (* here, payout occurs *)
-      JUMPDEST ::
-      JUMPDEST ::
-      JUMPDEST ::
-      JUMP :: nil.
 
 
   (* This results in a normal return. *)
   (* Maybe the execution can start in the middle.  How? *)
-  Definition ex := {|
-    stc := nil;
-    mem := Memory.empty U256.t;
-    str := store_init;
-    program := example1;
-    prg_sfx := example1;
-    caller := caller_ex1;
-    value := value_ex1;
-    data := data_ex1;
-    time := current_time;
-    noise := initial_noise
-  |}.
-
+  Definition ex (r : decode_result) : option state :=
+    match r with
+    | decode_success prog =>
+      Some {|
+        stc := nil;
+        mem := Memory.empty U256.t;
+        str := store_init;
+        program := prog;
+        prg_sfx := prog;
+        caller := caller_ex1;
+        value := value_ex1;
+        data := data_ex1;
+        time := current_time;
+        noise := initial_noise
+      |}
+    | decode_failure reason => None
+    end.
 
   Definition interesting (r : result) (target : U256.t) :=
     match r with
@@ -1528,9 +1356,8 @@ Definition example1 : list instr :=
       | failure _ => True
       | end_of_program _ => True
       | not_implemented _ _ => True
+      | decode_fail => True
     end.
-
-  Require Import Ascii.
 
   Open Scope char_scope.
   Print string.
@@ -1581,7 +1408,9 @@ Definition example1 : list instr :=
       drop_bytes x (Uto_nat (U str)) = drop_bytes x (literal_to_nat str).
   Proof. by move=> ? ?; rewrite Uliteral. Qed.
 
-  Ltac step := rewrite apply_S; compute -[apply_n NPeano.div nth drop_bytes interesting find Memory.find Memory.add]; rewrite ?dropUlit; compute [drop_bytes string_half_len minus literal_to_nat read_hex read_hex_char plus mult].
+  Ltac clarify := compute -[apply_n NPeano.div nth drop_bytes interesting find Memory.find Memory.add]; rewrite ?dropUlit; compute [drop_bytes string_half_len minus literal_to_nat read_hex read_hex_char plus mult].
+
+  Ltac step := rewrite apply_S; clarify.
 
   Ltac run := repeat step.
 
@@ -1589,10 +1418,17 @@ Definition example1 : list instr :=
     rewrite dropUlit ;
     compute [drop_bytes string_half_len minus literal_to_nat read_hex read_hex_char plus mult].
 
-  Unset Ltac Debug.
+  Close Scope char_scope.
+  Open Scope string_scope.
 
-  Goal interesting (apply_n 1000 ex) somebody -> False.
-    rewrite/ex/example1.
+
+  (* A code taken from
+     https://etherchain.org/account/0x10ebb6b1607de9c08c61c6f6044b8edc93b8e9c9#code *)
+  Definition example1_code : string :=
+"0x60606040526000357c0100000000000000000000000000000000000000000000000000000000900480634665096d1461004f578063be040fb014610070578063dd4670641461007d5761004d565b005b61005a6004506100a4565b6040518082815260200191505060405180910390f35b61007b600450610140565b005b61008e6004803590602001506100ad565b6040518082815260200191505060405180910390f35b60016000505481565b6000600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff16141561013a57428211801561011957506000600160005054145b1561013157816001600050819055506001905061013b565b6000905061013b565b5b919050565b600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff1614156101df576001600050544211156101de57600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16ff5b5b5b56".
+
+  Lemma lem : ~ interesting (apply_n 1000 (ex (decode example1_code))) somebody.
+    clarify.
     step.
     step.
     step.
@@ -1633,7 +1469,9 @@ Definition example1 : list instr :=
               set b5 := U256.eqb _ _.
               case_eq b5 => b5_eq.
               {
+                step.
                 run.
+
                 rewrite/interesting.
                 rewrite/str.
                 move => [_].
